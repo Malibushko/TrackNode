@@ -1,21 +1,16 @@
 #include <cstdint>
+#include <stm32f1xx_hal.h>
 
 volatile uint32_t boot_ok = 0;
 
 int main()
 {
+    HAL_Init();
+    
     boot_ok = 0xDEADBEEF;
-
-    volatile int number = 1;
-
-    for (int i = 0; i < 1000; i++)
-    {
-        number++;
-    }
-
-    number = 42;
 
     while (true)
     {
+
     }
 }
