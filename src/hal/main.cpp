@@ -1,6 +1,11 @@
 #include <cstdint>
 #include "stm32f4xx_hal.h"
 
+extern "C" void SysTick_Handler()
+{
+    HAL_IncTick();
+}
+
 int main()
 {
     HAL_Init();
@@ -18,6 +23,10 @@ int main()
     while (true)
     {
         HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+
+        volatile uint32_t tick = HAL_GetTick();
+        (void)tick;
+
         HAL_Delay(500);
     }
 }
