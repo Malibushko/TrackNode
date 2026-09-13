@@ -10,6 +10,13 @@
 board configure_track_node_board()
 {
 	board board{};
+	board.add<gpio>("status_led", gpio_config{
+		.pin = { GPIOC, GPIO_PIN_13 },
+		.mode = GPIO_MODE_OUTPUT_PP,
+		.pull = GPIO_NOPULL,
+		.speed = GPIO_SPEED_LOW,
+		.active_low = true
+	});
 
 	board.add<uart>("console", uart_config{
 			.instance  = USART1,
@@ -48,42 +55,46 @@ board configure_track_node_board()
 	return board;
 }
 
+void main_loop()
+{
+	common::delay(50);
+}
 
 int main()
 {
-	gpio status_led(gpio_config{.pin = { GPIOC, GPIO_PIN_13 }, .mode = GPIO_MODE_OUTPUT_PP, .pull = GPIO_NOPULL, .speed = GPIO_SPEED_FAST });
-	status_led.init();
+	HAL_Init();
 
 	board track_node = configure_track_node_board();
 
-	auto init_status = track_node.init();
-
-	if (!init_status)
+	if (status init_status = track_node.init(); !init_status)
 	{
-		volatile error init_error = init_status.error();
-		static_cast<void>(init_error);
+		error init_error = init_status.error();
+		error_handler(init_error.code);
 	}
 
-	int counter = 0;
-
-	debounced_input<gpio, 20> button(track_node.get<gpio>("button"));
+	// $NOTE: here we just hope that status_led was initialized
+	status_blink_task status_display = make_status_blinker(track_node.get<gpio>("status_led"), g_state);
 
 	while (true)
 	{
-		status_led.write(gpio::state::set);
+		status_display.poll();
 
-		std::printf("Tick #%u\r\n", counter++);
-
-		button.update(common::get_tick());
-
-		if (button.state_changed())
+		switch (g_state)
 		{
-			if (button.state())
+			case program_state::ok:
 			{
-				status_led.toggle();
+				main_loop();
+				break;
+			}
+
+			case program_state::initialization_error:
+			case program_state::runtime_error:
+			case program_state::hal_error:
+			{
+				common::delay(50);
+
+				break;
 			}
 		}
-
-		common::delay(1);
 	}
 }

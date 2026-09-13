@@ -17,6 +17,7 @@ struct gpio_config
 	uint32_t speed = GPIO_SPEED_FREQ_LOW;
 	uint32_t alternate = 0;
 	bool initial_high = false;
+	bool active_low = false;
 };
 
 class gpio : public hardware_object

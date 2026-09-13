@@ -17,11 +17,12 @@ status board::init()
 
 	status result{};
 
-	for (auto &component : components_ | std::views::values)
+	for (auto &name : insertion_order_)
 	{
+		component_t &component = components_.at(name);
 		std::visit([&result](auto &device)
 		{
-			if (const status status = device.init(); !status)
+			if (const status status = device.init())
 			{
 				result = status;
 			}

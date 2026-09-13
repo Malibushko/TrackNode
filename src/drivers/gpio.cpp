@@ -94,6 +94,11 @@ status gpio::write(state signal)
 		return fail(component::gpio, error_code::invalid_config);
 	}
 
+	if (config_.active_low)
+	{
+		signal = signal == state::set ? state::reset : state::set;
+	}
+
 	HAL_GPIO_WritePin(config_.pin.port, config_.pin.mask, signal == state::set ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
 	return {};
