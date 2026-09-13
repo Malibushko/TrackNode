@@ -12,6 +12,11 @@ void set_stdout_uart(uart *console)
 	stdout_uart = console;
 }
 
+bool has_stdout_uart()
+{
+	return stdout_uart != nullptr;
+}
+
 extern "C" int _write(int descriptor, char *data, int length)
 {
 	if (descriptor != 1 && descriptor != 2)

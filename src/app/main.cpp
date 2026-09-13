@@ -1,9 +1,9 @@
 #include "board/board.h"
 #include "common/common.h"
-#include "common/debounce.h"
 #include "platform/error.h"
 
 #include "misc/status_led.h"
+#include "platform/stdio.h"
 
 #include <cstdio>
 
@@ -21,10 +21,10 @@ board configure_track_node_board()
 	board.add<uart>("console", uart_config{
 			.instance  = USART1,
 			.tx        = pin{ GPIOA, GPIO_PIN_9 },
-			.rx        = pin{},
+			.rx        = pin{ GPIOA, GPIO_PIN_10 },
 			.alternate = GPIO_AF7_USART1,
 			.baud_rate = 115200,
-			.mode      = UART_MODE_TX,
+			.mode      = UART_MODE_TX_RX,
 	});
 
 	board.add<timer>("led_timer", timer_config{
@@ -55,11 +55,6 @@ board configure_track_node_board()
 	return board;
 }
 
-void main_loop()
-{
-	common::delay(50);
-}
-
 int main()
 {
 	HAL_Init();
@@ -75,6 +70,13 @@ int main()
 	// $NOTE: here we just hope that status_led was initialized
 	status_blink_task status_display = make_status_blinker(track_node.get<gpio>("status_led"), g_state);
 
+	auto & console = track_node.get<uart>("console");
+	set_stdout_uart(&track_node.get<uart>("console"));
+
+	std::array<uint8_t, 64> buffer{};
+
+	int tick = 0;
+
 	while (true)
 	{
 		status_display.poll();
@@ -83,7 +85,20 @@ int main()
 		{
 			case program_state::ok:
 			{
-				main_loop();
+				uint32_t rx_available = console.available();
+				if (!rx_available)
+				{
+					std::printf("[TICK %u] No data received.\r\n", tick++);
+
+					common::delay(500);
+					break;
+				}
+
+				size_t read_count{};
+				console.read_available(buffer.data(), std::min<uint32_t>(buffer.size(), rx_available), read_count);
+
+				// just echo for now
+				console.write(buffer.data(), read_count);
 				break;
 			}
 
