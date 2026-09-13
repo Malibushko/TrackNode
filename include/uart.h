@@ -18,7 +18,7 @@ bool InitUART()
 
     if (HAL_UART_Init(&UART_Handler) != HAL_OK)
     {
-        return false;
+        Error_Handler();
     }
 
     return true;

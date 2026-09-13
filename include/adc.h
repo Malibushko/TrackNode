@@ -20,18 +20,18 @@ bool InitADC()
 
     if (HAL_ADC_Init(&hadc1) != HAL_OK)
     {
-        return false;
+        Error_Handler();
     }
 
     ADC_ChannelConfTypeDef sConfig = {0};
 
     sConfig.Channel = ADC_CHANNEL_0;
     sConfig.Rank = 1;
-    sConfig.SamplingTime = ADC_SAMPLETIME_84CYCLES;
+    sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
 
     if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
     {
-        return false;
+        Error_Handler();
     }
 
     GPIO_InitTypeDef GPIO_InitStruct{};
