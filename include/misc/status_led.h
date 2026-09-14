@@ -54,3 +54,15 @@ inline status_blink_task make_status_blinker(gpio &led, const program_state &sta
 		co_await status_blink_task::delay_ms{1000};
 	}
 }
+
+inline status_blink_task make_status_blinker(gpio& led, const uint8_t times_to_blink, const uint32_t delay_ms = 150)
+{
+	for (int i = 0; i < times_to_blink; ++i)
+	{
+		led.write(gpio::state::set);
+		co_await status_blink_task::delay_ms{delay_ms};
+		led.write(gpio::state::reset);
+		co_await status_blink_task::delay_ms{delay_ms};
+	}
+}
+

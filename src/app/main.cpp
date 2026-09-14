@@ -1,8 +1,11 @@
 #include "board/board.h"
+#include "board/track_node_control_protocol.h"
 #include "common/common.h"
+#include "misc/coro_helpers.h"
 #include "platform/error.h"
 
 #include "misc/status_led.h"
+#include "misc/uart_read_adapter.h"
 #include "platform/stdio.h"
 
 #include <cstdio>
@@ -68,16 +71,19 @@ int main()
 	}
 
 	// $NOTE: here we just hope that status_led was initialized
+	gpio& status_led = track_node.get<gpio>("status_led");
 	status_blink_task status_display = make_status_blinker(track_node.get<gpio>("status_led"), g_state);
+	status_led.write(gpio::state::reset);
 
-	auto & console = track_node.get<uart>("console");
-	set_stdout_uart(&track_node.get<uart>("console"));
+	uart &console = track_node.get<uart>("console");
+	set_stdout_uart(&console);
 
-	std::array<uint8_t, 64> buffer{};
+	uart_read_adapter console_adapter(console);
+	track_node_control_protocol commandReader(console_adapter);
 
-	int tick = 0;
+	uint32_t tick = 0;
 
-	while (true)
+	while (++tick)
 	{
 		status_display.poll();
 
@@ -85,20 +91,36 @@ int main()
 		{
 			case program_state::ok:
 			{
-				uint32_t rx_available = console.available();
-				if (!rx_available)
+				commandReader.consume();
+
+				if (!commandReader.available())
 				{
-					std::printf("[TICK %u] No data received.\r\n", tick++);
+					common::delay(50);
+				} else
+				{
+					switch (commandReader.read())
+					{
+					    case command::blink_once:
+					    {
+					    	run_to_completion(make_status_blinker(status_led, 1));
 
-					common::delay(500);
-					break;
-				}
+						    break;
+					    }
+					    case command::blink_twice:
+					    {
+					    	run_to_completion(make_status_blinker(status_led, 2));
 
-				size_t read_count{};
-				console.read_available(buffer.data(), std::min<uint32_t>(buffer.size(), rx_available), read_count);
+						    break;
+					    }
+					    case command::blink_thrice:
+					    {
+					    	run_to_completion(make_status_blinker(status_led, 3));
 
-				// just echo for now
-				console.write(buffer.data(), read_count);
+						    break;
+					    }
+				    }
+			    }
+
 				break;
 			}
 

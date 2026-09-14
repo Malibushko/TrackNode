@@ -18,6 +18,12 @@ void error_handler(error_code error_code)
 			g_state = program_state::hal_error;
 			break;
 		}
+
+		default:
+		{
+			g_state = program_state::runtime_error;
+			break;
+		}
 	}
 }
 

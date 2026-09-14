@@ -19,6 +19,7 @@ enum class error_code
 	invalid_config,
 	not_initialized,
 	already_initialized,
+	uart_error,
 	hal_failure
 };
 

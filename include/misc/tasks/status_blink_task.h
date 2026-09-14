@@ -67,6 +67,12 @@ public:
 		}
 	}
 
+	[[nodiscard]] bool done() const noexcept
+	{
+		return !handle_ || handle_.done();
+	}
+
 private:
 	std::coroutine_handle<promise_type> handle_;
 };
+
