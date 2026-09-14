@@ -11,7 +11,9 @@ enum class component
 	uart,
 	timer,
 	pwm,
-	adc
+	adc,
+	i2c_bus,
+	i2c_device
 };
 
 enum class error_code

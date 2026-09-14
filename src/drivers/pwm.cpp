@@ -49,8 +49,7 @@ status pwm::init()
 	hal_config.Pulse = 0;
 	hal_config.OCPolarity = config_.polarity;
 	hal_config.OCFastMode = TIM_OCFAST_DISABLE;
-	operation_status =
-	    from_hal(component::pwm, HAL_TIM_PWM_ConfigChannel(&timer_.handle_, &hal_config, config_.channel));
+	operation_status = from_hal(component::pwm, HAL_TIM_PWM_ConfigChannel(&timer_.handle_, &hal_config, config_.channel));
 	if (operation_status)
 	{
 		initialized_ = true;
