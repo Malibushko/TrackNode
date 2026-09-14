@@ -2,32 +2,33 @@
 #include <concepts>
 #include <cstdint>
 #include <optional>
-#include <queue>
+#include "common/ring_buffer.h"
+#include <cstddef>
 
-template<class T>
-concept ByteInput = requires(T& input) {
-	{ input.read() }      -> std::same_as<std::uint8_t>;
-	{ input.available() } -> std::integral;
+template <class T>
+concept ByteInput = requires(T &input) {
+	{
+		input.read()
+	} -> std::same_as<std::uint8_t>;
+	{
+		input.available()
+	} -> std::integral;
 };
 
-template<
-	ByteInput Input,
-	class Command,
-	class Derived
->
-class command_protocol
+template <ByteInput Input, class Command, class Derived> class command_protocol
 {
 public:
-	explicit command_protocol(Input& input)
-		: input_(input)
-	{}
+	explicit command_protocol(Input &input) : input_(input)
+	{
+	}
 
-	bool consume()
+	bool consume(size_t byte_budget = 32)
 	{
 		bool decoded = false;
 
-		while (input_.available() > 0)
+		while (byte_budget != 0 && !decoded_commands_.full() && input_.available() > 0)
 		{
+			--byte_budget;
 			const auto byte = input_.read();
 
 			if (auto cmd = derived().decode(byte))
@@ -48,18 +49,18 @@ public:
 
 	Command read()
 	{
-		auto result = std::move(decoded_commands_.front());
-		decoded_commands_.pop();
-		return result;
+		Command decoded{};
+		decoded_commands_.pop(decoded);
+		return decoded;
 	}
 
 protected:
-	Derived& derived() noexcept
+	Derived &derived() noexcept
 	{
-		return static_cast<Derived&>(*this);
+		return static_cast<Derived &>(*this);
 	}
 
 private:
-	Input& input_;
-	std::queue<Command> decoded_commands_;
+	Input &input_;
+	ring_buffer<Command, 8> decoded_commands_;
 };

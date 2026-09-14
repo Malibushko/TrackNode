@@ -1,10 +1,4 @@
 #include "board/board.h"
-#include "board/clock.h"
-#include "platform/stdio.h"
-#include "core/result.h"
-
-#include <cstdio>
-#include <ranges>
 
 status board::init()
 {
@@ -15,19 +9,20 @@ status board::init()
 
 	attempted_ = true;
 
-	status result{};
-
-	for (auto &name : insertion_order_)
+	for (const auto &name : insertion_order_)
 	{
-		component_t &component = components_.at(name);
-		std::visit([&result](auto &device)
+		auto init_status = std::visit(
+		    [](auto &device)
+		    {
+			    return device.init();
+		    },
+		    components_.at(name));
+
+		if (!init_status)
 		{
-			if (const status status = device.init())
-			{
-				result = status;
-			}
-		}, component);
+			return init_status;
+		}
 	}
 
-	return result;
+	return {};
 }
