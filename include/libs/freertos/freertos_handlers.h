@@ -1,8 +1,7 @@
-//
-// Created by malib on 9/15/2026.
-//
+#pragma once
+extern "C" {
+	#include "FreeRTOS.h"
+	#include "task.h"
+}
 
-#ifndef TRACKNODE_FREERTOS_HANDLERS_H
-#define TRACKNODE_FREERTOS_HANDLERS_H
-
-#endif //TRACKNODE_FREERTOS_HANDLERS_H
+extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName);
