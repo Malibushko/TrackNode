@@ -1,28 +1,19 @@
 #include "board/board.h"
 
-status board::init()
+status board::init(std::span<const component_ref> components)
 {
 	if (attempted_)
 	{
 		return fail(component::board, error_code::already_initialized);
 	}
-
 	attempted_ = true;
-
-	for (const auto &name : insertion_order_)
+	for (const auto &device : components)
 	{
-		auto init_status = std::visit(
-		    [](auto &device)
-		    {
-			    return device.init();
-		    },
-		    components_.at(name));
-
+		auto init_status = device.init();
 		if (!init_status)
 		{
 			return init_status;
 		}
 	}
-
 	return {};
 }

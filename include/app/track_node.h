@@ -1,16 +1,18 @@
 #pragma once
 
 #include "app/status_indicator.h"
-#include "board/board.h"
+#include "board/track_node_board.h"
 #include "board/track_node_control_protocol.h"
 #include "drivers/devices/bmp280.h"
 #include "misc/uart_read_adapter.h"
+#include "core/hardware_object.h"
+#include "platform/error.h"
 #include <optional>
 
 class track_node : public hardware_object
 {
 public:
-	explicit track_node(board &hardware);
+	explicit track_node(track_node_board &hardware);
 	status init();
 	void update(uint32_t now);
 
@@ -32,7 +34,7 @@ public:
 private:
 	void set_error(error failure, bool during_init);
 
-	board &hardware_;
+	track_node_board &hardware_;
 	gpio diagnostic_led_;
 	status_indicator indicator_;
 	uart_read_adapter console_input_;

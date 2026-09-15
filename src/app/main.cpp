@@ -5,7 +5,7 @@
 
 int main()
 {
-	board hardware = configure_track_node_board();
+	track_node_board hardware;
 	track_node application{ hardware };
 	const auto init_status = application.init();
 
