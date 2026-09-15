@@ -1,0 +1,8 @@
+//
+// Created by malib on 9/15/2026.
+//
+
+#ifndef TRACKNODE_FREERTOS_HANDLERS_H
+#define TRACKNODE_FREERTOS_HANDLERS_H
+
+#endif //TRACKNODE_FREERTOS_HANDLERS_H
