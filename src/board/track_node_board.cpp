@@ -1,5 +1,7 @@
 #include "board/track_node_board.h"
 
+#include "drivers/i2c_bus.h"
+
 board configure_track_node_board()
 {
 	board board{};
@@ -13,31 +15,14 @@ board configure_track_node_board()
 	                               .mode = UART_MODE_TX_RX,
 	                           });
 
-	board.add<timer>("led_timer", timer_config{
-	                                  .instance = TIM2,
-	                                  .prescaler = 71,
-	                                  .auto_reload = 999,
-	                              });
+	board.add<i2c_bus>("i2c1", i2c_bus_config{
+		.instance = I2C1,
+		.clock_speed = 100000,
+		.pin_scl = {GPIOB, GPIO_PIN_6},
+		.pin_sda = {GPIOB, GPIO_PIN_7}
+	});
 
-	board.add<pwm>("led", board.get<timer>("led_timer"),
-	               pwm_config{
-	                   .pin = pin{ GPIOA, GPIO_PIN_1 },
-	                   .alternate = GPIO_AF1_TIM2,
-	                   .channel = TIM_CHANNEL_2,
-	                   .polarity = TIM_OCPOLARITY_HIGH,
-	               });
-
-	board.add<adc>("analog", adc_config{
-	                             .pin = pin{ GPIOA, GPIO_PIN_0 },
-	                             .channel = ADC_CHANNEL_0,
-	                             .sample_time = ADC_SAMPLETIME_15CYCLES,
-	                         });
-
-	board.add<gpio>("button", gpio_config{
-	                              .pin = pin{ GPIOA, GPIO_PIN_15 },
-	                              .mode = GPIO_MODE_INPUT,
-	                              .pull = GPIO_PULLUP,
-	                          });
+	board.add<i2c_device>("i2c1_bpe280",board.get<i2c_bus>("i2c1"), static_cast<uint8_t>(0x77));
 
 	return board;
 }

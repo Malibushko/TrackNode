@@ -1,5 +1,6 @@
 #include "app/track_node.h"
 #include "board/clock.h"
+#include "drivers/devices/bmp280.h"
 #include "platform/stdio.h"
 #include <cstdio>
 
@@ -7,7 +8,9 @@ track_node::track_node(board &hardware)
     : hardware_(hardware),
       diagnostic_led_(gpio_config{
           .pin = { GPIOC, GPIO_PIN_13 }, .mode = GPIO_MODE_OUTPUT_PP, .initial_high = true, .active_low = true }),
-      indicator_(diagnostic_led_), console_input_(hardware.get<uart>("console")), protocol_(console_input_)
+      indicator_(diagnostic_led_),
+	  console_input_(hardware.get<uart>("console")),
+	  protocol_(console_input_)
 {
 }
 
@@ -79,7 +82,7 @@ void track_node::update(uint32_t now)
 		}
 		else
 		{
-			process_command(now);
+
 		}
 	}
 
@@ -89,32 +92,5 @@ void track_node::update(uint32_t now)
 	{
 		set_error(indicator_status.error(), false);
 		diagnostic_ready_ = false;
-	}
-}
-
-void track_node::process_command(uint32_t now)
-{
-	if (indicator_.busy() || !protocol_.available())
-	{
-		return;
-	}
-
-	switch (protocol_.read())
-	{
-		case command::blink_once:
-		{
-			indicator_.start_blink(1, now);
-			break;
-		}
-		case command::blink_twice:
-		{
-			indicator_.start_blink(2, now);
-			break;
-		}
-		case command::blink_thrice:
-		{
-			indicator_.start_blink(3, now);
-			break;
-		}
 	}
 }

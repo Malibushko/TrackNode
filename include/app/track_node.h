@@ -3,6 +3,7 @@
 #include "app/status_indicator.h"
 #include "board/board.h"
 #include "board/track_node_control_protocol.h"
+#include "drivers/devices/bmp280.h"
 #include "misc/uart_read_adapter.h"
 #include <optional>
 
@@ -29,7 +30,6 @@ public:
 	}
 
 private:
-	void process_command(uint32_t now);
 	void set_error(error failure, bool during_init);
 
 	board &hardware_;
@@ -39,6 +39,7 @@ private:
 	track_node_control_protocol<uart_read_adapter> protocol_;
 	program_state state_ = program_state::initialization_error;
 	std::optional<error> last_error_;
+
 	bool attempted_ = false;
 	bool diagnostic_ready_ = false;
 };

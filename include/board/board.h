@@ -4,6 +4,8 @@
 #include "drivers/uart.h"
 #include "drivers/pwm.h"
 #include "drivers/adc.h"
+#include "drivers/i2c_bus.h"
+#include "drivers/i2c_device.h"
 #include "platform/error.h"
 
 #include <algorithm>
@@ -16,7 +18,7 @@
 class board : public hardware_object
 {
 public:
-	using component_t = std::variant<uart, timer, pwm, adc, gpio>;
+	using component_t = std::variant<uart, timer, pwm, adc, gpio, i2c_bus, i2c_device>;
 
 	board() = default;
 

@@ -10,6 +10,8 @@ public:
 	{
 	}
 
+	status init();
+
 	status read_registers(uint8_t first_register, std::span<uint8_t> destination, uint32_t timeout = HAL_MAX_DELAY);
 	status write_register(uint8_t register_address, uint8_t value, uint32_t timeout = HAL_MAX_DELAY);
 

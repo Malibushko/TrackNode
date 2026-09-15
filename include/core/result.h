@@ -5,6 +5,7 @@
 
 enum class component
 {
+	undefined,
 	board,
 	clock,
 	gpio,

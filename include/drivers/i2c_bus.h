@@ -29,7 +29,7 @@ public:
 	using handle_t = I2C_HandleTypeDef;
 
 public:
-	explicit i2c_bus(i2c_bus_config &config) : i2c_handle(), config_(config)
+	explicit i2c_bus(i2c_bus_config config) : i2c_handle(), config_(config)
 	{
 	}
 

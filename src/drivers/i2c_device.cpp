@@ -10,6 +10,11 @@ uint16_t to_hal_address(uint8_t address)
 constexpr uint8_t MAX_ADDRESS = 0x7Fu;
 }
 
+status i2c_device::init()
+{
+	return from_hal(component::i2c_device, HAL_OK);
+}
+
 status i2c_device::read_registers(uint8_t first_register, std::span<uint8_t> destination, uint32_t timeout)
 {
 	if (address_ > MAX_ADDRESS)
