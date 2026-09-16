@@ -672,3 +672,6 @@
 #define INCLUDE_xTaskAbortDelay                0
 #define INCLUDE_xTaskGetHandle                 0
 #define INCLUDE_xTaskResumeFromISR             1
+
+#define vPortSVCHandler SVC_Handler
+#define xPortPendSVHandler PendSV_Handler
