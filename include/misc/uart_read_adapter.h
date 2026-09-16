@@ -13,14 +13,13 @@ public:
 	uint8_t read()
 	{
 		uint8_t data = 0;
-		size_t read_count = 0;
-		auto read_status = source_.read_available(&data, sizeof(data), read_count);
+		auto read_result = source_.read(&data, sizeof(data));
 
-		if (!read_status)
+		if (!read_result)
 		{
-			error_ = read_status.error();
+			error_ = read_result.error();
 		}
-		else if (read_count != 1)
+		else if (read_result.value() != 1)
 		{
 			error_ = error{ component::uart, error_code::uart_error };
 		}

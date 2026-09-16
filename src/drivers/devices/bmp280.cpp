@@ -92,7 +92,7 @@ status bmp280::init()
 		return sleep_status;
 	}
 
-	const uint32_t started_at = HAL_GetTick();
+	const uint32_t started_at = common::get_tick();
 
 	while (true)
 	{
@@ -108,7 +108,7 @@ status bmp280::init()
 			break;
 		}
 
-		if (HAL_GetTick() - started_at >= RW_TIMEOUT_DELAY * 2)
+		if (common::get_tick() - started_at >= RW_TIMEOUT_DELAY * 2)
 		{
 			return from_hal(get_component_type(), HAL_TIMEOUT);
 		}

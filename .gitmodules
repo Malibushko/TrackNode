@@ -1,3 +1,15 @@
 [submodule "third_party/FreeRTOS"]
 	path = third_party/FreeRTOS
 	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
+[submodule "third_party/printf"]
+	path = third_party/printf
+	url = https://github.com/mpaland/printf.git
+[submodule "libs/printf"]
+	path = libs/printf
+	url = https://github.com/mpaland/printf.git
+[submodule "lib/printf"]
+	path = lib/printf
+	url = https://github.com/mpaland/printf.git
+[submodule "lib/expected"]
+	path = lib/expected
+	url = https://github.com/TartanLlama/expected.git

@@ -1,21 +1,21 @@
 #include "app/track_node.h"
+#include "board/clock.h"
 #include "board/track_node_board.h"
-#include "common/common.h"
 #include "platform/error.h"
+
+static track_node_board hardware;
+static track_node application{ hardware };
 
 int main()
 {
-	track_node_board hardware;
-	track_node application{ hardware };
-	const auto init_status = application.init();
+	HAL_Init();
+	auto init_status = init_system_clock()
+							.and_then([]{ return application.init(); });
 
 	if (!init_status && !application.can_signal_error())
 	{
 		panic();
 	}
 
-	while (true)
-	{
-		application.update(common::get_tick());
-	}
+	application.launch();
 }

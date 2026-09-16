@@ -6,58 +6,55 @@
 
 namespace {
 
-constexpr size_t max_uart_instances = 4;
-uart* g_uart_instances[max_uart_instances] = {};
+uart* instance_usart1 = nullptr;
+uart* instance_usart2 = nullptr;
+uart* instance_usart6 = nullptr;
 
-void register_uart(uart* obj)
+void bind_instance(USART_TypeDef* periph, uart* obj)
 {
-    for (auto*& slot : g_uart_instances)
-    {
-        if (slot == nullptr)
-        {
-            slot = obj;
-            return;
-        }
-    }
+	if (periph == USART1)
+		instance_usart1 = obj;
+	else if (periph == USART2)
+		instance_usart2 = obj;
+	else if (periph == USART6)
+		instance_usart6 = obj;
 }
 
-uart* find_uart(USART_TypeDef* periph)
+void unbind_instance(USART_TypeDef* periph)
 {
-    for (auto* obj : g_uart_instances)
-    {
-        if (obj != nullptr && obj->handle().Instance == periph)
-        {
-            return obj;
-        }
-    }
-    return nullptr;
+	bind_instance(periph, nullptr);
+}
+
+inline uart* get_instance(USART_TypeDef* periph)
+{
+	if (periph == USART1)
+		return instance_usart1;
+	if (periph == USART2)
+		return instance_usart2;
+	if (periph == USART6)
+		return instance_usart6;
+
+	return nullptr;
 }
 
 IRQn_Type irq_for(USART_TypeDef* instance)
 {
-    if (instance == USART1)
-    {
-	    return USART1_IRQn;
-    }
-
+	if (instance == USART1)
+		return USART1_IRQn;
 	if (instance == USART2)
-    {
-	    return USART2_IRQn;
-    }
-
+		return USART2_IRQn;
 	if (instance == USART6)
-    {
-	    return USART6_IRQn;
-    }
+		return USART6_IRQn;
 
-    return static_cast<IRQn_Type>(-1);
+	return static_cast<IRQn_Type>(-1);
 }
 
 }
 
 uart::uart(uart_config config) : config_(config)
 {
-    register_uart(this);
+	rx_stream_buf_ = xStreamBufferCreate(config_.rx_buffer_size, 1);
+	bind_instance(config_.instance, this);
 }
 
 status uart::enable_irq()
@@ -180,8 +177,7 @@ status uart::write(const uint8_t *data, size_t size, uint32_t timeout_ms)
        return {};
     }
 
-    return from_hal(component::uart,
-                    HAL_UART_Transmit(&handle_, const_cast<uint8_t *>(data), static_cast<uint16_t>(size), timeout_ms));
+    return from_hal(component::uart, HAL_UART_Transmit(&handle_, data, static_cast<uint16_t>(size), timeout_ms));
 }
 
 void uart::request_next_byte()
@@ -189,12 +185,14 @@ void uart::request_next_byte()
     HAL_UART_Receive_IT(&handle_, &rx_byte_, 1);
 }
 
-void uart::on_rx_complete()
+void uart::on_rx_complete(BaseType_t* higher_priority_woken)
 {
-    if (!rx_buffer_.push(rx_byte_))
-    {
-        dropped_count_.fetch_add(1, std::memory_order_relaxed);
-    }
+	size_t sent = xStreamBufferSendFromISR(rx_stream_buf_, &rx_byte_, sizeof(rx_byte_), higher_priority_woken);
+
+	if (!sent)
+	{
+		dropped_count_.fetch_add(1, std::memory_order_relaxed);
+	}
 
     request_next_byte();
 }
@@ -208,7 +206,7 @@ void uart::on_error()
 
 size_t uart::available() const
 {
-    return rx_buffer_.size();
+    return xStreamBufferBytesAvailable(rx_stream_buf_);
 }
 
 uint32_t uart::dropped_count() const
@@ -216,26 +214,18 @@ uint32_t uart::dropped_count() const
     return dropped_count_.load(std::memory_order_relaxed);
 }
 
-status uart::read_available(uint8_t *data, size_t size, size_t &read_count)
+result<size_t> uart::read(uint8_t *data, size_t size, uint32_t timeout_ms)
 {
-    if (!initialized_)
-    {
-       return fail(component::uart, error_code::not_initialized);
-    }
+	if (!initialized_)
+		return fail(component::uart, error_code::not_initialized);
 
-    if (!(config_.mode & UART_MODE_RX) || (!data && size))
-    {
-       return fail(component::uart, error_code::invalid_config);
-    }
+	if (!data || size == 0)
+		return fail(component::uart, error_code::invalid_config);
 
-    read_count = 0;
+	TickType_t ticks = (timeout_ms == portMAX_DELAY) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+	size_t bytes_read = xStreamBufferReceive(rx_stream_buf_, data, size, ticks);
 
-    while (read_count < size && rx_buffer_.pop(data[read_count]))
-    {
-        read_count++;
-    }
-
-    return {};
+	return bytes_read;
 }
 
 //
@@ -244,15 +234,21 @@ status uart::read_available(uint8_t *data, size_t size, size_t &read_count)
 
 extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if (auto* obj = find_uart(huart->Instance))
+    if (auto* obj = get_instance(huart->Instance))
     {
-        obj->on_rx_complete();
+    	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    	obj->on_rx_complete(&xHigherPriorityTaskWoken);
+
+    	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+    	{
+    		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    	}
     }
 }
 
 extern "C" void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-    if (auto* obj = find_uart(huart->Instance))
+    if (auto* obj = get_instance(huart->Instance))
     {
         obj->on_error();
     }
@@ -260,24 +256,18 @@ extern "C" void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 
 extern "C" void USART1_IRQHandler(void)
 {
-	if (auto* obj = find_uart(USART1))
-	{
-		HAL_UART_IRQHandler(&obj->handle());
-	}
+	if (instance_usart1)
+		HAL_UART_IRQHandler(&instance_usart1->handle());
 }
 
 extern "C" void USART2_IRQHandler(void)
 {
-	if (auto* obj = find_uart(USART2))
-	{
-		HAL_UART_IRQHandler(&obj->handle());
-	}
+	if (instance_usart2)
+		HAL_UART_IRQHandler(&instance_usart2->handle());
 }
 
 extern "C" void USART6_IRQHandler(void)
 {
-	if (auto* obj = find_uart(USART6))
-	{
-		HAL_UART_IRQHandler(&obj->handle());
-	}
+	if (instance_usart6)
+		HAL_UART_IRQHandler(&instance_usart6->handle());
 }

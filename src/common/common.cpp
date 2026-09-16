@@ -1,18 +1,17 @@
 #include "common/common.h"
-
-#include <stm32f4xx_hal.h>
+#include "libs/freertos/freertos_helpers.h"
 
 namespace common
 {
 
 uint32_t get_tick()
 {
-	return HAL_GetTick();
+	return xTaskGetTickCount();
 }
 
 void delay(uint32_t time_ms)
 {
-	HAL_Delay(time_ms);
+	vTaskDelay(pdMS_TO_TICKS(time_ms));
 }
 
 }

@@ -24,6 +24,6 @@ track_node_board::track_node_board()
 status track_node_board::init()
 {
 	const std::array components{ component_ref{ console_ }, component_ref{ sensor_bus_ },
-		                         component_ref{ environment_sensor_ } };
+			component_ref{ environment_sensor_ } };
 	return lifecycle_.init(components);
 }

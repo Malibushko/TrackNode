@@ -22,23 +22,31 @@ public:
 	{
 	}
 
-	bool consume(size_t byte_budget = 32)
+	bool process_next_byte()
 	{
-		bool decoded = false;
+		const uint8_t byte = input_.read();
 
-		while (byte_budget != 0 && !decoded_commands_.full() && input_.available() > 0)
+		if (auto cmd = derived().decode(byte))
 		{
-			--byte_budget;
-			const auto byte = input_.read();
-
-			if (auto cmd = derived().decode(byte))
-			{
+			if (!decoded_commands_.full()) {
 				decoded_commands_.push(std::move(*cmd));
-				decoded = true;
 			}
+			return true;
 		}
 
-		return decoded;
+		return false;
+	}
+
+	bool feed(uint8_t byte)
+	{
+		if (auto cmd = derived().decode(byte))
+		{
+			if (!decoded_commands_.full()) {
+				decoded_commands_.push(std::move(*cmd));
+			}
+			return true;
+		}
+		return false;
 	}
 
 	[[nodiscard]]

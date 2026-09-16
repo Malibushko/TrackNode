@@ -4,9 +4,9 @@
 
 enum class command
 {
-	blink_once,
-	blink_twice,
-	blink_thrice,
+	ping,
+	read_temperature,
+	read_pressure,
 };
 
 template<ByteInput Input>
@@ -25,48 +25,21 @@ public:
 
 	std::optional<command> decode(std::uint8_t byte)
 	{
-		switch (state_)
+		if (byte == 'p')
 		{
-			case state::waiting_header:
-			{
-				if (byte == 'b')
-					state_ = state::waiting_command;
+			return command::ping;
+		}
 
-				break;
-			}
+		if (byte == 't')
+		{
+			return command::read_temperature;
+		}
 
-			case state::waiting_command:
-			{
-				state_ = state::waiting_header;
-
-				switch (byte)
-				{
-					case '0':
-						return command::blink_once;
-
-					case '1':
-						return command::blink_twice;
-
-					case '2':
-						return command::blink_thrice;
-
-					default:
-						break;
-				}
-
-				break;
-			}
+		if (byte == 'c')
+		{
+			return command::read_pressure;
 		}
 
 		return std::nullopt;
 	}
-
-private:
-	enum class state
-	{
-		waiting_header,
-		waiting_command,
-	};
-
-	state state_ = state::waiting_header;
 };

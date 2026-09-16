@@ -14,7 +14,6 @@ class track_node : public hardware_object
 public:
 	explicit track_node(track_node_board &hardware);
 	status init();
-	void update(uint32_t now);
 
 	[[nodiscard]] program_state state() const
 	{
@@ -31,6 +30,27 @@ public:
 		return diagnostic_ready_;
 	}
 
+	[[noreturn]] void launch();
+
+private:
+
+	struct log_message {
+		char text[64];
+	};
+
+private:
+	status startup();
+
+	status init_buffers();
+	status init_indicators_tasks();
+	status init_protocol_tasks();
+	status init_sensor_tasks();
+	status init_logger_tasks();
+
+	void update_indicators(uint32_t now);
+
+	void log(const char * fmt, ...);
+
 private:
 	void set_error(error failure, bool during_init);
 
@@ -41,6 +61,10 @@ private:
 	track_node_control_protocol<uart_read_adapter> protocol_;
 	program_state state_ = program_state::initialization_error;
 	std::optional<error> last_error_;
+
+	QueueHandle_t indicator_queue_;
+	QueueHandle_t sensor_queue_;
+	QueueHandle_t logger_queue_;
 
 	bool attempted_ = false;
 	bool diagnostic_ready_ = false;
