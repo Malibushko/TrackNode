@@ -372,6 +372,10 @@ status track_node::init_storage_tasks()
 	auto storage_task = [](void *arg)
 	{
 		// TODO
+		while (true)
+		{
+
+		}
 	};
 
 	if (auto result = task_create(storage_task, "storage_task", configMINIMAL_STACK_SIZE * 4, this, tskIDLE_PRIORITY); !result)

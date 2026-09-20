@@ -9,7 +9,21 @@ private:
 	static constexpr uint32_t MAX_DELAY = 100;
 
 public:
-	using r1_t = uint8_t;
+	struct r1_value_t
+	{
+		uint8_t raw = 0xFF;
+
+		[[nodiscard]] bool received() const { return (raw & 0x80u) == 0; }
+		[[nodiscard]] bool parameter_error() const { return (raw & 0x40u) != 0; }
+		[[nodiscard]] bool address_error() const { return (raw & 0x20u) != 0; }
+		[[nodiscard]] bool erase_sequence_error() const { return (raw & 0x10u) != 0; }
+		[[nodiscard]] bool crc_error() const { return (raw & 0x08u) != 0; }
+		[[nodiscard]] bool illegal_command() const { return (raw & 0x04u) != 0; }
+		[[nodiscard]] bool erase_reset() const { return (raw & 0x02u) != 0; }
+		[[nodiscard]] bool in_idle_state() const { return (raw & 0x01u) != 0; }
+	};
+
+	using r1_t = r1_value_t;
 
 	struct r3_t
 	{
@@ -17,16 +31,14 @@ public:
 		uint32_t ocr;
 	};
 
-	union r7_value_t
+	struct r7_value_t
 	{
-		uint32_t raw;
-		struct
-		{
-			uint32_t check_pattern    : 8;
-			uint32_t voltage_accepted : 4;
-			uint32_t reserved         : 16;
-			uint32_t command_version  : 4;
-		} bits;
+		uint32_t raw = 0;
+
+		[[nodiscard]] uint8_t check_pattern() const { return static_cast<uint8_t>(raw & 0xFFu); }
+		[[nodiscard]] uint8_t voltage_accepted() const { return static_cast<uint8_t>((raw >> 8) & 0x0Fu); }
+		[[nodiscard]] uint16_t reserved() const { return static_cast<uint16_t>((raw >> 12) & 0xFFFFu); }
+		[[nodiscard]] uint8_t command_version() const { return static_cast<uint8_t>((raw >> 28) & 0x0Fu); }
 	};
 
 	static_assert(sizeof(r7_value_t) == sizeof(uint32_t));
@@ -36,7 +48,6 @@ public:
 		r1_t r1;
 		r7_value_t value;
 	};
-
 public:
 	using spi_device::spi_device;
 
@@ -68,7 +79,9 @@ public:
     status read_ocr(r3_t &response, uint32_t timeout = MAX_DELAY);
 
 private:
+	status send_command(uint8_t index, uint32_t crc, uint32_t timeout, r1_t& response);
+	status send_command(uint8_t index, uint32_t argument, uint32_t crc, uint32_t timeout, r1_t &response);
 
-private:
-	bool initialized_{ false };
+	[[nodiscard]] status validate_response(r1_t response) const;
+	status card_warm_up();
 };
