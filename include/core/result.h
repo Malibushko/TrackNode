@@ -20,7 +20,9 @@ enum class component
 	adc,
 	i2c_bus,
 	i2c_device,
-	rtos
+	rtos,
+	spi_bus,
+	spi_device
 };
 
 enum class error_code
@@ -32,7 +34,8 @@ enum class error_code
 	uart_error,
 	hal_failure,
 	out_of_memory,
-	os_failure
+	os_failure,
+	invalid_argument
 };
 
 struct error
