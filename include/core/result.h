@@ -36,6 +36,7 @@ enum class error_code
 	out_of_memory,
 	os_failure,
 	invalid_argument,
+	timeout_error,
 	not_implemented
 };
 

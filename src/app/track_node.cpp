@@ -2,6 +2,9 @@
 
 #include "libs/freertos/freertos_helpers.h"
 
+#include <numeric>
+#include <ranges>
+
 extern "C"
 {
 #include "FreeRTOS.h"
@@ -371,14 +374,25 @@ status track_node::init_storage_tasks()
 {
 	auto storage_task = [](void *arg)
 	{
-		// TODO
+		auto application = static_cast<track_node *>(arg);
+		auto& sd_card = application->hardware_.storage();
+
+		sd_card::r1_t response;
+
+		std::array<uint8_t, 512> buffer{};
+
 		while (true)
 		{
+			if (auto status = sd_card.read_single_block(0x00, buffer, response); !status)
+			{
+				continue;
+			}
 
+			common::delay(1000);
 		}
 	};
 
-	if (auto result = task_create(storage_task, "storage_task", configMINIMAL_STACK_SIZE * 4, this, tskIDLE_PRIORITY); !result)
+	if (auto result = task_create(storage_task, "storage_task", configMINIMAL_STACK_SIZE * 8, this, tskIDLE_PRIORITY); !result)
 	{
 		return tl::make_unexpected(result.error());
 	}

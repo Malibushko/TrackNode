@@ -7,6 +7,7 @@ class sd_card : spi_device
 {
 private:
 	static constexpr uint32_t MAX_DELAY = 100;
+	static constexpr uint32_t WRITE_TIMEOUT = 1000;
 
 public:
 	struct r1_value_t
@@ -58,7 +59,7 @@ public:
     status app_send_op_cond(bool host_capacity_support, r1_t &r1, uint32_t timeout = MAX_DELAY);
 
 	status send_op_cond(r1_t &r1, uint32_t timeout = MAX_DELAY);
-    status send_if_cond(uint8_t voltage_supplied, uint8_t check_pattern, r7_t &response, uint32_t timeout = MAX_DELAY);
+    status send_if_cond(uint32_t timeout = MAX_DELAY);
     status send_csd(std::span<uint8_t, 16> csd, r1_t &r1, uint32_t timeout = MAX_DELAY);
     status send_cid(std::span<uint8_t, 16> cid, r1_t &r1, uint32_t timeout = MAX_DELAY);
 
@@ -72,7 +73,7 @@ public:
     status set_block_count(uint16_t number_of_blocks, r1_t &r1, uint32_t timeout = MAX_DELAY);
     status set_wr_block_erase_count(uint32_t number_of_blocks, r1_t &r1, uint32_t timeout = MAX_DELAY);
 
-    status write_block(uint32_t address, std::span<const uint8_t> data, r1_t &r1, uint32_t timeout = MAX_DELAY);
+    status write_block(uint32_t address, std::span<const uint8_t> data, r1_t &r1, uint32_t timeout = WRITE_TIMEOUT);
     status write_multiple_block(uint32_t address, std::span<const uint8_t> data, r1_t &r1, uint32_t timeout = MAX_DELAY);
 
     status app_cmd(r1_t &r1, uint32_t timeout = MAX_DELAY);
@@ -81,7 +82,10 @@ public:
 private:
 	status send_command(uint8_t index, uint32_t crc, uint32_t timeout, r1_t& response);
 	status send_command(uint8_t index, uint32_t argument, uint32_t crc, uint32_t timeout, r1_t &response);
+	status send_command(uint8_t index, uint32_t argument, uint32_t crc, uint32_t timeout, r7_t &response);
+	status send_command(uint8_t index, uint32_t crc, uint32_t timeout, r3_t &response);
 
 	[[nodiscard]] status validate_response(r1_t response) const;
 	status card_warm_up();
+	status busy_pause(uint8_t ticks);
 };

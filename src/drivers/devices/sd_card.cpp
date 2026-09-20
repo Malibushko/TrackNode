@@ -1,6 +1,7 @@
 #include "drivers/devices/sd_card.h"
 
 #include "common/common.h"
+#include "misc/bits_utils"
 
 enum CMD
 {
@@ -16,7 +17,7 @@ enum CMD
 };
 
 static constexpr uint32_t DEFAULT_CRC = 0xFF;
-static constexpr uint32_t DEFAULT_RESPONSE = 0xFF;
+static constexpr uint8_t DEFAULT_RESPONSE = 0xFF;
 static constexpr uint8_t STOP_BIT = 1;
 static constexpr uint8_t MAX_ATTEMPTS = 8;
 
@@ -37,6 +38,48 @@ status sd_card::init()
 	}
 
 	if (!response.in_idle_state())
+	{
+		return fail(component::spi_device, error_code::device_error);
+	}
+
+	if (auto result = send_if_cond(MAX_DELAY); !result)
+	{
+		return result;
+	}
+
+	const auto init_start_tick = common::get_tick();
+	const auto init_timeout_limit = pdMS_TO_TICKS(1000);
+
+	while (true)
+	{
+		if (auto result = app_cmd(response).and_then([&]{ return app_send_op_cond(true, response, MAX_DELAY); }); !result)
+		{
+			return result;
+		}
+
+		if (response.raw == 0x0)
+		{
+			break;
+		}
+
+		if (common::get_tick() - init_start_tick >= init_timeout_limit)
+			break;
+
+		common::delay(10);
+	}
+
+	if (response.raw != 0x0)
+	{
+		return fail(component::spi_device, error_code::device_error);
+	}
+
+	r3_t ocr;
+	if (auto result = read_ocr(ocr, MAX_DELAY); !result)
+	{
+		return result;
+	}
+
+	if ((ocr.ocr & (1u << 30)) == 0)
 	{
 		return fail(component::spi_device, error_code::device_error);
 	}
@@ -67,7 +110,21 @@ status sd_card::app_send_op_cond(bool host_capacity_support, r1_t &r1, uint32_t 
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	return fail(component::spi_device, error_code::not_implemented);
+	spi_cs_guard guard{pin_cs};
+
+	uint32_t argument{};
+
+	if (host_capacity_support)
+	{
+		argument |= (1 << 30);
+	} else
+	{
+		argument &= ~(1 << 30);
+	}
+
+	return send_command(CMD41, argument, DEFAULT_CRC, timeout, r1)
+				.and_then([&]{ return validate_response(r1); })
+				.and_then([&]{ return busy_pause(1); });
 }
 
 status sd_card::send_op_cond(r1_t &r1, uint32_t timeout)
@@ -80,14 +137,46 @@ status sd_card::send_op_cond(r1_t &r1, uint32_t timeout)
 	return fail(component::spi_device, error_code::not_implemented);
 }
 
-status sd_card::send_if_cond(uint8_t voltage_supplied, uint8_t check_pattern, r7_t &response, uint32_t timeout)
+status sd_card::send_if_cond(uint32_t timeout)
 {
 	if (!initialized_)
 	{
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	return fail(component::spi_device, error_code::not_implemented);
+	spi_cs_guard guard{pin_cs};
+
+	r7_t cmd8_response{};
+
+	// $NOTE: 0x000001AA is datasheet value used to check if card is SDC Ver. 1 or not
+	auto status = send_command(CMD8, 0x000001AA, 0x87, timeout, cmd8_response);
+	if (!status)
+	{
+		return status;
+	}
+
+	if (cmd8_response.r1.illegal_command())
+	{
+		// card is SDC Ver. 1 or MMC Ver 3.
+		// not supported right now
+		return fail(component::spi_device, error_code::not_implemented);
+	}
+
+	if (auto validate_result = validate_response(cmd8_response.r1); !validate_result)
+	{
+		return validate_result;
+	}
+
+	// correct values from datasheet
+	// https://elm-chan.org/docs/mmc/mmc_e.html
+	if (cmd8_response.value.raw != 0x000001AA ||
+		cmd8_response.value.voltage_accepted() != 1 ||
+		cmd8_response.value.check_pattern() != 0xAA)
+	{
+		return fail(component::spi_device, error_code::device_error);
+	}
+
+	return {};
 }
 
 status sd_card::send_csd(std::span<uint8_t, 16> csd, r1_t &r1, uint32_t timeout)
@@ -137,7 +226,62 @@ status sd_card::read_single_block(uint32_t address, std::span<uint8_t> data, r1_
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	return fail(component::spi_device, error_code::not_implemented);
+	if (data.size() != 512)
+	{
+		return fail(component::spi_device, error_code::invalid_argument);
+	}
+
+	spi_cs_guard guard{ pin_cs };
+
+	auto status = send_command(CMD17, address, DEFAULT_CRC, timeout, r1)
+						.and_then([&] { return validate_response(r1); });
+
+	if (!status)
+	{
+		return status;
+	}
+
+	if (r1.raw != 0)
+	{
+		return fail(component::spi_device, error_code::invalid_argument);
+	}
+
+	const auto start_tick = common::get_tick();
+	const auto timeout_limit = pdMS_TO_TICKS(timeout);
+
+	uint8_t rx = {};
+
+	while (true)
+	{
+		rx = 0xFF;
+
+		if (auto result = bus_.receive(std::span{ &rx, 1 }, timeout); !result)
+			return result;
+
+		if (rx == 0xFE)
+		{
+			break;
+		}
+
+		if (common::get_tick() - start_tick >= timeout_limit)
+		{
+			return fail(component::spi_device, error_code::timeout_error);
+		}
+	}
+
+	std::fill(data.begin(), data.end(), 0xFF);
+	if (auto response = bus_.receive(data, timeout); !response)
+	{
+		return response;
+	}
+	
+	uint8_t crc[2] = {0xFF, 0xFF};
+	if (auto response = bus_.receive(std::span{ crc, 2 }, timeout); !response)
+	{
+		return response;
+	}
+
+	return {};
 }
 
 status sd_card::read_multiple_block(uint32_t address, std::span<uint8_t> data, r1_t &r1, uint32_t timeout)
@@ -177,7 +321,65 @@ status sd_card::write_block(uint32_t address, std::span<const uint8_t> data, r1_
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	return fail(component::spi_device, error_code::not_implemented);
+	if (data.size() != 512)
+	{
+		return fail(component::spi_device, error_code::invalid_argument);
+	}
+
+	spi_cs_guard guard{pin_cs};
+
+	auto result = send_command(CMD24, address, DEFAULT_CRC, timeout, r1)
+					.and_then([&] { return validate_response(r1); });
+	if (!result)
+	{
+		return result;
+	}
+	if (r1.raw != 0)
+	{
+		return fail(component::spi_device, error_code::device_error);
+	}
+
+	constexpr uint8_t start_token = 0xFE;
+	if (result = bus_.transmit(std::span{&start_token, 1}, timeout); !result)
+	{
+		return result;
+	}
+	if (result = bus_.transmit(data, timeout); !result)
+	{
+		return result;
+	}
+	constexpr uint8_t crc[2] = {0xFF, 0xFF};
+	if (result = bus_.transmit(crc, timeout); !result)
+	{
+		return result;
+	}
+
+	uint8_t response = 0xFF;
+	if (result = bus_.receive(std::span{&response, 1}, timeout); !result)
+	{
+		return result;
+	}
+	if ((response & 0x1Fu) != 0x05u)
+	{
+		return fail(component::spi_device, error_code::device_error);
+	}
+
+	const auto start_tick = common::get_tick();
+	const auto timeout_limit = pdMS_TO_TICKS(timeout);
+	do
+	{
+		response = 0xFF;
+		if (result = bus_.receive(std::span{&response, 1}, timeout); !result)
+		{
+			return result;
+		}
+		if (response == 0xFF)
+		{
+			return {};
+		}
+	} while (common::get_tick() - start_tick < timeout_limit);
+
+	return fail(component::spi_device, error_code::timeout_error);
 }
 
 status sd_card::write_multiple_block(uint32_t address, std::span<const uint8_t> data, r1_t &r1, uint32_t timeout)
@@ -197,7 +399,13 @@ status sd_card::app_cmd(r1_t &r1, uint32_t timeout)
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	return fail(component::spi_device, error_code::not_implemented);
+	spi_cs_guard guard{pin_cs};
+
+	auto status = send_command(CMD55, DEFAULT_CRC, timeout, r1)
+					.and_then([&]{ return validate_response(r1); })
+					.and_then([&]{ return busy_pause(1); });
+
+	return status;
 }
 
 status sd_card::read_ocr(r3_t &response, uint32_t timeout)
@@ -207,7 +415,9 @@ status sd_card::read_ocr(r3_t &response, uint32_t timeout)
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	return fail(component::spi_device, error_code::not_implemented);
+	spi_cs_guard guard{pin_cs};
+	return send_command(CMD58, DEFAULT_CRC, timeout, response)
+				.and_then([&] { return validate_response(response.r1); });
 }
 
 status sd_card::send_command(uint8_t index, uint32_t crc, uint32_t timeout, r1_t &response)
@@ -254,6 +464,43 @@ status sd_card::send_command(uint8_t index, uint32_t argument, uint32_t crc, uin
 	return fail(component::spi_device, error_code::device_error);
 }
 
+status sd_card::send_command(uint8_t index, uint32_t argument, uint32_t crc, uint32_t timeout, r7_t &response)
+{
+	if (auto status = send_command(index, argument, crc, timeout, response.r1); !status)
+	{
+		return status;
+	} else
+	{
+		response.value.raw = 0xFFFFFFFF;
+		if (auto result = bus_.receive(std::span{ reinterpret_cast<uint8_t *>(&response.value.raw), sizeof(response.value.raw) }, timeout ); !result)
+		{
+			return result;
+		}
+
+		response.value.raw = utils::reverse_bytes(response.value.raw);
+
+		return {};
+	}
+}
+
+status sd_card::send_command(uint8_t index, uint32_t crc, uint32_t timeout, r3_t &response)
+{
+	if (auto status = send_command(index, crc, timeout, response.r1); !status)
+	{
+		return status;
+	} else
+	{
+		response.ocr = 0xFFFFFFFF;
+		if (auto result = bus_.receive(std::span{ reinterpret_cast<uint8_t *>(&response.ocr), sizeof(response.ocr) }, timeout ); !result)
+		{
+			return result;
+		}
+
+		response.ocr = utils::reverse_bytes(response.ocr);
+
+		return {};
+	}
+}
 
 status sd_card::validate_response(r1_t response) const
 {
@@ -285,7 +532,11 @@ status sd_card::card_warm_up()
 	// Set CS=1 and MOSI=1
 	// Minimum for 74 ticks
 	static constexpr uint8_t warmup_ticks = 100;
+	return busy_pause(warmup_ticks);
+}
 
+status sd_card::busy_pause(uint8_t ticks)
+{
 	if (auto result = pin_cs.write(gpio::state::reset); !result)
 	{
 		return result;
@@ -293,7 +544,7 @@ status sd_card::card_warm_up()
 
 	uint8_t data[] = { 0xFF };
 
-	for (uint8_t i = 0; i < warmup_ticks; i++)
+	for (uint8_t i = 0; i < ticks; i++)
 	{
 		auto status = bus_.transmit(data, MAX_DELAY);
 		if (!status)
