@@ -9,7 +9,6 @@ struct spi_device_config
 	static const uint8_t READ_FLAG = 0x80;
 
 	pin cs_pin{};
-	bool cs_active_low{false};
 	uint8_t read_flag = spi_device_config::READ_FLAG;
 };
 
@@ -52,7 +51,7 @@ public:
 	status read_registers(uint8_t first_register, std::span<uint8_t> destination, uint32_t timeout = DEFAULT_TIMEOUT);
 	status write_register(uint8_t register_address, uint8_t value, uint32_t timeout = DEFAULT_TIMEOUT);
 
-private:
+protected:
 	spi_bus &bus_;
 	spi_device_config config_;
 

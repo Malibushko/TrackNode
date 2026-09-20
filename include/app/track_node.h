@@ -63,6 +63,7 @@ private:
 	status init_protocol_tasks();
 	status init_sensor_tasks();
 	status init_logger_tasks();
+	status init_storage_tasks();
 
 	void update_indicators(uint32_t now);
 
@@ -82,7 +83,7 @@ private:
 	QueueHandle_t indicator_queue_{};
 	QueueHandle_t sensor_queue_{};
 	QueueHandle_t logger_queue_{};
-	TaskHandle_t worker_tasks_[4]{};
+	TaskHandle_t worker_tasks_[5]{};
 
 	bool attempted_ = false;
 	std::atomic<bool> diagnostic_ready_{ false };

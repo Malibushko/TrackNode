@@ -35,7 +35,8 @@ enum class error_code
 	hal_failure,
 	out_of_memory,
 	os_failure,
-	invalid_argument
+	invalid_argument,
+	not_implemented
 };
 
 struct error

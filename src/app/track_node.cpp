@@ -133,21 +133,10 @@ status track_node::startup()
 	std::setvbuf(stdout, nullptr, _IONBF, 0);
 
 	init_status = init_logger_tasks()
-	                  .and_then(
-	                      [&]() -> status
-	                      {
-		                      return init_sensor_tasks();
-	                      })
-	                  .and_then(
-	                      [&]() -> status
-	                      {
-		                      return init_protocol_tasks();
-	                      })
-	                  .and_then(
-	                      [&]() -> status
-	                      {
-		                      return init_indicators_tasks();
-	                      });
+	                  .and_then([&]() -> status { return init_sensor_tasks(); })
+	                  .and_then([&]() -> status { return init_protocol_tasks(); })
+	                  .and_then([&]() -> status { return init_indicators_tasks(); })
+					  .and_then([&]() -> status { return init_storage_tasks(); });
 
 	if (!init_status)
 	{
@@ -373,6 +362,26 @@ status track_node::init_logger_tasks()
 	else
 	{
 		worker_tasks_[3] = result.value();
+	}
+
+	return {};
+}
+
+status track_node::init_storage_tasks()
+{
+	auto storage_task = [](void *arg)
+	{
+		// TODO
+	};
+
+	if (auto result = task_create(storage_task, "storage_task", configMINIMAL_STACK_SIZE * 4, this, tskIDLE_PRIORITY); !result)
+	{
+		return tl::make_unexpected(result.error());
+	}
+
+	else
+	{
+		worker_tasks_[4] = result.value();
 	}
 
 	return {};
