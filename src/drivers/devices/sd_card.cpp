@@ -84,6 +84,40 @@ status sd_card::init()
 		return fail(component::spi_device, error_code::device_error);
 	}
 
+	if (auto result = bus_.set_baud_rate_prescaler(SPI_BAUDRATEPRESCALER_8); !result)
+	{
+		return result;
+	}
+
+	return {};
+}
+
+status sd_card::sector_count(uint64_t& o_count)
+{
+	if (sector_count_ == 0)
+	{
+		std::array<uint8_t, 16> csd{};
+
+		r1_t response;
+		if (auto status = send_csd(csd, response, MAX_DELAY); !status)
+		{
+			return status;
+		}
+
+		const auto csd_structure = (csd[0] >> 6) & 0x03;
+
+		if (csd_structure != 1) {
+			return fail(component::spi_device, error_code::device_error);
+		}
+
+		uint32_t c_size = (static_cast<uint32_t>(csd[7] & 0x3F) << 16)
+						| (static_cast<uint32_t>(csd[8])        << 8)
+						|  static_cast<uint32_t>(csd[9]);
+
+		sector_count_ = static_cast<uint64_t>(c_size + 1) * 1024;
+	}
+
+	o_count = sector_count_;
 	return {};
 }
 
@@ -186,7 +220,57 @@ status sd_card::send_csd(std::span<uint8_t, 16> csd, r1_t &r1, uint32_t timeout)
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	return fail(component::spi_device, error_code::not_implemented);
+	spi_cs_guard guard{ pin_cs };
+
+	auto status = send_command(CMD9, DEFAULT_CRC, timeout, r1)
+						.and_then([&] { return validate_response(r1); });
+
+	if (!status)
+	{
+		return status;
+	}
+
+	if (r1.raw != 0)
+	{
+		return fail(component::spi_device, error_code::invalid_argument);
+	}
+
+	const auto start_tick = common::get_tick();
+	const auto timeout_limit = pdMS_TO_TICKS(timeout);
+
+	uint8_t rx = {};
+
+	while (true)
+	{
+		rx = 0xFF;
+
+		if (auto result = bus_.receive(std::span{ &rx, 1 }, timeout); !result)
+			return result;
+
+		if (rx == 0xFE)
+		{
+			break;
+		}
+
+		if (common::get_tick() - start_tick >= timeout_limit)
+		{
+			return fail(component::spi_device, error_code::timeout_error);
+		}
+	}
+
+	std::fill(csd.begin(), csd.end(), 0xFF);
+	if (auto response = bus_.receive(csd, timeout); !response)
+	{
+		return response;
+	}
+
+	uint8_t crc[2] = {0xFF, 0xFF};
+	if (auto response = bus_.receive(std::span{ crc, 2 }, timeout); !response)
+	{
+		return response;
+	}
+
+	return {};
 }
 
 status sd_card::send_cid(std::span<uint8_t, 16> cid, r1_t &r1, uint32_t timeout)

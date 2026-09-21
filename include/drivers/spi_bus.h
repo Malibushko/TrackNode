@@ -52,6 +52,8 @@ public:
         return spi_handle;
     }
 
+	status set_baud_rate_prescaler(uint32_t prescaler);
+
 private:
     status validate_transfer(std::size_t size) const;
 

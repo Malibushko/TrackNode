@@ -145,6 +145,21 @@ status spi_bus::transmit_receive(std::span<const uint8_t> tx, std::span<uint8_t>
     return from_hal(component::spi_bus, HAL_SPI_TransmitReceive(&spi_handle, const_cast<uint8_t *>(tx.data()), rx.data(), static_cast<uint16_t>(tx.size()), timeout));
 }
 
+status spi_bus::set_baud_rate_prescaler(uint32_t prescaler)
+{
+	if (!IS_SPI_BAUDRATE_PRESCALER(prescaler))
+	{
+		return fail(component::spi_bus, error_code::invalid_argument);
+	}
+
+	__HAL_SPI_DISABLE(&spi_handle);
+	MODIFY_REG(spi_handle.Instance->CR1, SPI_CR1_BR, prescaler);
+	spi_handle.Init.BaudRatePrescaler = prescaler;
+	__HAL_SPI_ENABLE(&spi_handle);
+
+	return {};
+}
+
 status spi_bus::validate_transfer(std::size_t size) const
 {
     if (!initialized_) {

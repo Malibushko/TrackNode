@@ -1,5 +1,7 @@
 #include "app/track_node.h"
 
+#include "drivers/filesystem.h"
+#include "libs/fatfs/sd_diskio.h"
 #include "libs/freertos/freertos_helpers.h"
 
 #include <numeric>
@@ -377,15 +379,38 @@ status track_node::init_storage_tasks()
 		auto application = static_cast<track_node *>(arg);
 		auto& sd_card = application->hardware_.storage();
 
-		sd_card::r1_t response;
-
-		std::array<uint8_t, 512> buffer{};
-
+		fatfs::Volume storage(sd_card);
+		uint8_t init_attempts = 8;
+		
 		while (true)
 		{
-			if (auto status = sd_card.read_single_block(0x00, buffer, response); !status)
+			if (!storage.mounted())
 			{
-				continue;
+				if (auto result = storage.mount(); result != FR_OK)
+				{
+					if (result == FR_NO_FILESYSTEM)
+					{
+						static std::uint8_t work[4096];
+
+						fatfs::MkfsOptions opts;
+						opts.format = FM_EXFAT;
+
+						if (storage.mkfs(opts, work) == FR_OK)
+							continue;
+					}
+					else if (result == FR_NOT_READY)
+					{
+						if (--init_attempts)
+						{
+							common::delay(1000);
+							continue;
+						}
+					}
+
+					application->set_error(error(component::storage, error_code::not_initialized), false);
+					vTaskDelete(nullptr);
+					break;
+				}
 			}
 
 			common::delay(1000);

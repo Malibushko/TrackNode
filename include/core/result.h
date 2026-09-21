@@ -22,7 +22,8 @@ enum class component
 	i2c_device,
 	rtos,
 	spi_bus,
-	spi_device
+	spi_device,
+	storage
 };
 
 enum class error_code
@@ -37,7 +38,8 @@ enum class error_code
 	os_failure,
 	invalid_argument,
 	timeout_error,
-	not_implemented
+	not_implemented,
+	storage_error
 };
 
 struct error

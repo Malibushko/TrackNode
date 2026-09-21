@@ -49,10 +49,13 @@ public:
 		r1_t r1;
 		r7_value_t value;
 	};
+
 public:
 	using spi_device::spi_device;
 
 	status init();
+
+	status sector_count(uint64_t& o_count);
 
 	status go_idle_state(r1_t &r1, uint32_t timeout = MAX_DELAY);
 
@@ -88,4 +91,8 @@ private:
 	[[nodiscard]] status validate_response(r1_t response) const;
 	status card_warm_up();
 	status busy_pause(uint8_t ticks);
+
+private:
+
+	uint64_t sector_count_{};
 };
