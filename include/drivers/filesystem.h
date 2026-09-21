@@ -239,7 +239,8 @@ public:
 
     FRESULT close() noexcept
     {
-        if (is_open()) last_ = f_close(&fil_);
+        if (is_open())
+            last_ = f_close(&fil_);
         return last_;
     }
 

@@ -104,6 +104,12 @@ status track_node::init_buffers()
 		return fail(component::board, error_code::out_of_memory);
 	}
 
+	storage_queue_ = xQueueCreate(4, sizeof(sensor_record));
+	if (!storage_queue_)
+	{
+		return fail(component::board, error_code::out_of_memory);
+	}
+
 	return {};
 }
 
@@ -240,6 +246,21 @@ status track_node::init_protocol_tasks()
 					}
 					break;
 				}
+				case command::read_log:
+				{
+					FILINFO info{};
+					auto result = fatfs::Volume::stat("logs/data.csv", info);
+					if (result == FR_OK)
+					{
+						track_node_ptr->log("Log size: %u Bytes\r\n", info.fsize);
+					}
+					else
+					{
+						track_node_ptr->log("Unable to read log...\r\n");
+					}
+
+					break;
+				}
 				}
 			}
 
@@ -274,9 +295,32 @@ status track_node::init_sensor_tasks()
 		auto queue = application->sensor_queue_;
 
 		command event;
+
+		uint32_t broadcast_freq = pdMS_TO_TICKS(3000);
+		uint32_t last_broadcast_tick = common::get_tick();
+
 		while (true)
 		{
-			BaseType_t event_received = xQueueReceive(queue, &event, portMAX_DELAY);
+			if (common::get_tick() - last_broadcast_tick > broadcast_freq)
+			{
+				if (auto measurement = sensor.read_measurement())
+				{
+					sensor_record record{};
+					record.timestamp = common::get_tick();
+					record.temperature = measurement->temperature_c;
+					record.pressure = measurement->pressure_pa;
+
+					if (xQueueSend(application->storage_queue_, &record, portMAX_DELAY) == pdPASS)
+					{
+						last_broadcast_tick = common::get_tick();
+					}
+				} else
+				{
+					application->log("Unable to read measurement...\r\n");
+				}
+			}
+
+			BaseType_t event_received = xQueueReceive(queue, &event, pdMS_TO_TICKS(500));
 
 			if (event_received == pdPASS)
 			{
@@ -358,8 +402,7 @@ status track_node::init_logger_tasks()
 		}
 	};
 
-	if (auto result = task_create(logger_task, "logger_task", configMINIMAL_STACK_SIZE * 4, this, tskIDLE_PRIORITY);
-	    !result)
+	if (auto result = task_create(logger_task, "logger_task", configMINIMAL_STACK_SIZE * 4, this, tskIDLE_PRIORITY + 1); !result)
 	{
 		return tl::make_unexpected(result.error());
 	}
@@ -378,42 +421,129 @@ status track_node::init_storage_tasks()
 	{
 		auto application = static_cast<track_node *>(arg);
 		auto& sd_card = application->hardware_.storage();
+		auto& queue = application->storage_queue_;
 
 		fatfs::Volume storage(sd_card);
 		uint8_t init_attempts = 8;
-		
-		while (true)
+
+		while (!storage.mounted())
 		{
-			if (!storage.mounted())
+			auto result = storage.mount();
+			if (result == FR_OK)
 			{
-				if (auto result = storage.mount(); result != FR_OK)
-				{
-					if (result == FR_NO_FILESYSTEM)
-					{
-						static std::uint8_t work[4096];
-
-						fatfs::MkfsOptions opts;
-						opts.format = FM_EXFAT;
-
-						if (storage.mkfs(opts, work) == FR_OK)
-							continue;
-					}
-					else if (result == FR_NOT_READY)
-					{
-						if (--init_attempts)
-						{
-							common::delay(1000);
-							continue;
-						}
-					}
-
-					application->set_error(error(component::storage, error_code::not_initialized), false);
-					vTaskDelete(nullptr);
-					break;
-				}
+				break;
 			}
 
-			common::delay(1000);
+			if (result == FR_NO_FILESYSTEM)
+			{
+				static std::uint8_t work[4096];
+
+				fatfs::MkfsOptions opts;
+				opts.format = FM_EXFAT;
+
+				result = storage.mkfs(opts, work);
+				if (result == FR_OK)
+				{
+					continue;
+				}
+			}
+			else if (result == FR_NOT_READY && --init_attempts)
+			{
+				common::delay(1000);
+				continue;
+			}
+
+			application->log("Storage initialization failed: %u\r\n", static_cast<unsigned>(result));
+			application->set_error(error(component::storage, error_code::not_initialized), false);
+			vTaskDelete(nullptr);
+			return;
+		}
+
+		FRESULT result = fatfs::Volume::mkdir("logs");
+		if (result != FR_OK && result != FR_EXIST)
+		{
+			application->log("Unable to create logs directory: %u\r\n", static_cast<unsigned>(result));
+			application->set_error(error(component::storage, error_code::storage_error), false);
+			vTaskDelete(nullptr);
+			return;
+		}
+
+		fatfs::File log;
+		result = log.open("logs/data.csv", FA_WRITE | FA_OPEN_APPEND);
+		if (result != FR_OK)
+		{
+			application->log("Unable to open log file: %u\r\n", static_cast<unsigned>(result));
+			application->set_error(error(component::storage, error_code::storage_error), false);
+			vTaskDelete(nullptr);
+			return;
+		}
+
+		if (log.size() == 0)
+		{
+			result = log.write_string("timestamp_ms,temperature_c,pressure_pa\r\n");
+			if (result == FR_OK)
+			{
+				result = log.sync();
+			}
+
+			if (result != FR_OK)
+			{
+				application->log("Unable to initialize log file: %u\r\n", static_cast<unsigned>(result));
+				application->set_error(error(component::storage, error_code::storage_error), false);
+				vTaskDelete(nullptr);
+				return;
+			}
+		}
+
+		sensor_record record{};
+		std::array<char, 64> buffer{};
+		const TickType_t sync_freq = pdMS_TO_TICKS(5000);
+		TickType_t last_sync_tick = common::get_tick();
+		bool dirty = false;
+
+		while (true)
+		{
+			if (xQueueReceive(queue, &record, sync_freq) == pdPASS)
+			{
+				const auto length = snprintf(
+					buffer.data(),
+					buffer.size(),
+					"%lu,%.2f,%.2f\r\n",
+					static_cast<unsigned long>(pdTICKS_TO_MS(record.timestamp)),
+					static_cast<double>(record.temperature),
+					static_cast<double>(record.pressure));
+
+				if (length < 0 || static_cast<size_t>(length) >= buffer.size())
+				{
+					application->log("Log record is too long\r\n");
+					continue;
+				}
+
+				result = log.write(buffer.data(), static_cast<UINT>(length));
+				if (result != FR_OK)
+				{
+					application->log("Unable to write log: %u\r\n", static_cast<unsigned>(result));
+					application->set_error(error(component::storage, error_code::storage_error), false);
+					continue;
+				}
+
+				dirty = true;
+			}
+
+			if (dirty && common::get_tick() - last_sync_tick >= sync_freq)
+			{
+				result = log.sync();
+				if (result == FR_OK)
+				{
+					last_sync_tick = common::get_tick();
+					dirty = false;
+				}
+				else
+				{
+					application->log("Unable to sync log: %u\r\n", static_cast<unsigned>(result));
+					application->set_error(error(component::storage, error_code::storage_error), false);
+				}
+			}
 		}
 	};
 

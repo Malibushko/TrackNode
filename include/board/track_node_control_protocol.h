@@ -7,6 +7,7 @@ enum class command
 	ping,
 	read_temperature,
 	read_pressure,
+	read_log
 };
 
 template<ByteInput Input>
@@ -38,6 +39,11 @@ public:
 		if (byte == 'c')
 		{
 			return command::read_pressure;
+		}
+
+		if (byte == 'l')
+		{
+			return command::read_log;
 		}
 
 		return std::nullopt;

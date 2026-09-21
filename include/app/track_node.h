@@ -50,6 +50,14 @@ public:
 	[[noreturn]] void launch();
 
 private:
+	struct sensor_record
+	{
+		TickType_t timestamp;
+		float temperature;
+		float pressure;
+	};
+
+private:
 	struct log_message
 	{
 		char text[64];
@@ -83,6 +91,7 @@ private:
 	QueueHandle_t indicator_queue_{};
 	QueueHandle_t sensor_queue_{};
 	QueueHandle_t logger_queue_{};
+	QueueHandle_t storage_queue_{};
 	TaskHandle_t worker_tasks_[5]{};
 
 	bool attempted_ = false;
