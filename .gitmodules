@@ -13,3 +13,9 @@
 [submodule "lib/expected"]
 	path = lib/expected
 	url = https://github.com/TartanLlama/expected.git
+[submodule "libs/fatfs"]
+	path = libs/fatfs
+	url = https://github.com/abbrev/fatfs.git
+[submodule "lib/fatfs"]
+	path = lib/fatfs
+	url = https://github.com/abbrev/fatfs.git
