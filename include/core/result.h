@@ -23,7 +23,8 @@ enum class component
 	rtos,
 	spi_bus,
 	spi_device,
-	storage
+	storage,
+	watchdog
 };
 
 enum class error_code

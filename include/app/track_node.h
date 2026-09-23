@@ -72,9 +72,9 @@ private:
 	status init_sensor_tasks();
 	status init_logger_tasks();
 	status init_storage_tasks();
+	status init_watchdog_tasks();
 
 	void update_indicators(uint32_t now);
-
 	void log(const char *fmt, ...);
 
 private:
@@ -92,7 +92,11 @@ private:
 	QueueHandle_t sensor_queue_{};
 	QueueHandle_t logger_queue_{};
 	QueueHandle_t storage_queue_{};
-	TaskHandle_t worker_tasks_[5]{};
+
+	TaskHandle_t worker_tasks_[6]{};
+	std::atomic<TickType_t> sensor_last_progress_{ 0 };
+	std::atomic<TickType_t> storage_last_progress_{ 0 };
+	std::atomic<bool> storage_ready_{ false };
 
 	bool attempted_ = false;
 	std::atomic<bool> diagnostic_ready_{ false };

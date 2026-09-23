@@ -5,7 +5,6 @@
 #include "libs/freertos/freertos_helpers.h"
 
 #include <numeric>
-#include <ranges>
 
 extern "C"
 {
@@ -25,10 +24,11 @@ extern "C"
 #include <printf.h>
 
 track_node::track_node(track_node_board &hardware)
-    : hardware_(hardware),
-      diagnostic_led_(gpio_config{
-          .pin = { GPIOC, GPIO_PIN_13 }, .mode = GPIO_MODE_OUTPUT_PP, .initial_high = true, .active_low = true }),
-      indicator_(diagnostic_led_), console_input_(hardware.console()), protocol_(console_input_)
+    :	hardware_(hardware),
+		diagnostic_led_(gpio_config{.pin = { GPIOC, GPIO_PIN_13 }, .mode = GPIO_MODE_OUTPUT_PP, .initial_high = true, .active_low = true }),
+		indicator_(diagnostic_led_),
+		console_input_(hardware.console()),
+		protocol_(console_input_)
 {
 }
 
@@ -47,6 +47,7 @@ status track_node::init()
 					task = nullptr;
 				}
 			}
+
 			if (!application->can_signal_error())
 			{
 				panic();
@@ -147,7 +148,8 @@ status track_node::startup()
 	                  .and_then([&]() -> status { return init_sensor_tasks(); })
 	                  .and_then([&]() -> status { return init_protocol_tasks(); })
 	                  .and_then([&]() -> status { return init_indicators_tasks(); })
-					  .and_then([&]() -> status { return init_storage_tasks(); });
+					  .and_then([&]() -> status { return init_storage_tasks(); })
+					  .and_then([&]() -> status { return init_watchdog_tasks(); });
 
 	if (!init_status)
 	{
@@ -215,9 +217,9 @@ status track_node::init_protocol_tasks()
 {
 	auto console_task = [](void *arg)
 	{
-		auto track_node_ptr = static_cast<track_node *>(arg);
-		auto &console = track_node_ptr->console_input_;
-		auto &protocol = track_node_ptr->protocol_;
+		auto application = static_cast<track_node *>(arg);
+		auto &console = application->console_input_;
+		auto &protocol = application->protocol_;
 
 		while (true)
 		{
@@ -227,46 +229,46 @@ status track_node::init_protocol_tasks()
 				// TODO: create event bus to dispatch events to different queues
 				switch (command)
 				{
-				case command::ping:
-				{
-					if (xQueueSend(track_node_ptr->indicator_queue_, &command, 0) != pdPASS)
+					case command::ping:
 					{
-						track_node_ptr->dropped_commands_.fetch_add(1);
-						track_node_ptr->log("Command queue full: %u\r\n", static_cast<unsigned>(command));
+						if (xQueueSend(application->indicator_queue_, &command, 0) != pdPASS)
+						{
+							application->dropped_commands_.fetch_add(1);
+							application->log("Command queue full: %u\r\n", static_cast<unsigned>(command));
+						}
+						break;
 					}
-					break;
-				}
-				case command::read_pressure:
-				case command::read_temperature:
-				{
-					if (xQueueSend(track_node_ptr->sensor_queue_, &command, 0) != pdPASS)
+					case command::read_pressure:
+					case command::read_temperature:
 					{
-						track_node_ptr->dropped_commands_.fetch_add(1);
-						track_node_ptr->log("Command queue full: %u\r\n", static_cast<unsigned>(command));
+						if (xQueueSend(application->sensor_queue_, &command, 0) != pdPASS)
+						{
+							application->dropped_commands_.fetch_add(1);
+							application->log("Command queue full: %u\r\n", static_cast<unsigned>(command));
+						}
+						break;
 					}
-					break;
-				}
-				case command::read_log:
-				{
-					FILINFO info{};
-					auto result = fatfs::Volume::stat("logs/data.csv", info);
-					if (result == FR_OK)
+					case command::read_log:
 					{
-						track_node_ptr->log("Log size: %u Bytes\r\n", info.fsize);
-					}
-					else
-					{
-						track_node_ptr->log("Unable to read log...\r\n");
-					}
+						FILINFO info{};
+						auto result = fatfs::Volume::stat("logs/data.csv", info);
+						if (result == FR_OK)
+						{
+							application->log("Log size: %u Bytes\r\n", info.fsize);
+						}
+						else
+						{
+							application->log("Unable to read log...\r\n");
+						}
 
-					break;
-				}
+						break;
+					}
 				}
 			}
 
-			if (console.last_error())
+			if (console.last_error() && console.last_error()->code != error_code::timeout_error)
 			{
-				track_node_ptr->set_error(*console.last_error(), false);
+				application->set_error(*console.last_error(), false);
 			}
 		}
 	};
@@ -277,7 +279,6 @@ status track_node::init_protocol_tasks()
 	{
 		return tl::make_unexpected(result.error());
 	}
-
 	else
 	{
 		worker_tasks_[1] = result.value();
@@ -360,6 +361,8 @@ status track_node::init_sensor_tasks()
 				}
 				}
 			}
+
+			application->sensor_last_progress_.store(common::get_tick(), std::memory_order_relaxed);
 		}
 	};
 
@@ -368,7 +371,6 @@ status track_node::init_sensor_tasks()
 	{
 		return tl::make_unexpected(result.error());
 	}
-
 	else
 	{
 		worker_tasks_[2] = result.value();
@@ -501,6 +503,9 @@ status track_node::init_storage_tasks()
 		TickType_t last_sync_tick = common::get_tick();
 		bool dirty = false;
 
+		application->storage_last_progress_.store(common::get_tick(), std::memory_order_relaxed);
+		application->storage_ready_.store(true, std::memory_order_release);
+
 		while (true)
 		{
 			if (xQueueReceive(queue, &record, sync_freq) == pdPASS)
@@ -544,6 +549,8 @@ status track_node::init_storage_tasks()
 					application->set_error(error(component::storage, error_code::storage_error), false);
 				}
 			}
+
+			application->storage_last_progress_.store(common::get_tick(), std::memory_order_relaxed);
 		}
 	};
 
@@ -551,14 +558,65 @@ status track_node::init_storage_tasks()
 	{
 		return tl::make_unexpected(result.error());
 	}
-
 	else
 	{
 		worker_tasks_[4] = result.value();
 	}
 
 	return {};
-};
+}
+
+status track_node::init_watchdog_tasks()
+{
+    auto watchdog_task = [](void *arg)
+    {
+        auto *application = static_cast<track_node *>(arg);
+        auto &watchdog = application->hardware_.get_watchdog();
+
+        // Storage owns its initialization. Begin runtime monitoring once it is ready.
+        while (!application->storage_ready_.load(std::memory_order_acquire))
+        {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+
+        if (auto result = watchdog.init(); !result)
+        {
+            application->set_error(result.error(), false);
+            vTaskDelete(nullptr);
+            return;
+        }
+
+        constexpr TickType_t progress_timeout = pdMS_TO_TICKS(10000);
+        while (true)
+        {
+            const TickType_t now = xTaskGetTickCount();
+            const TickType_t sensor = application->sensor_last_progress_.load(std::memory_order_relaxed);
+            const TickType_t storage = application->storage_last_progress_.load(std::memory_order_relaxed);
+
+            if (now - sensor <= progress_timeout && now - storage <= progress_timeout)
+            {
+                if (!watchdog.refresh())
+                {
+                    panic();
+                }
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
+    };
+
+    if (auto result = task_create(watchdog_task, "watchdog_task", configMINIMAL_STACK_SIZE, this,
+                                  configMAX_PRIORITIES - 1); !result)
+    {
+        return tl::make_unexpected(result.error());
+    }
+    else
+    {
+        worker_tasks_[5] = result.value();
+    }
+
+    return {};
+}
 
 void track_node::update_indicators(uint32_t now)
 {

@@ -2,6 +2,7 @@
 #include "board/board.h"
 #include "drivers/spi_bus.h"
 #include "drivers/uart.h"
+#include "drivers/watchdog.h"
 #include "drivers/devices/bmp280.h"
 #include "drivers/devices/sd_card.h"
 
@@ -31,6 +32,11 @@ public:
 		return sd_card_;
 	}
 
+	watchdog & get_watchdog()
+	{
+		return watchdog_;
+	}
+
 private:
 	board lifecycle_;
 	uart console_;
@@ -40,4 +46,6 @@ private:
 
 	spi_bus spi_bus_;
 	sd_card sd_card_;
+
+	watchdog watchdog_;
 };

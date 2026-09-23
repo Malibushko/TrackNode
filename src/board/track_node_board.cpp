@@ -27,7 +27,8 @@ track_node_board::track_node_board()
 	  }),
       sd_card_(spi_bus_, spi_device_config{
 		.cs_pin = pin{ GPIOA, GPIO_PIN_15 }
-      })
+      }),
+	  watchdog_(watchdog_config{.instance = IWDG, .prescaler = IWDG_PRESCALER_128, .reload = 0x3FF })
 {
 
 }
