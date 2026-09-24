@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/hal.h"
+#include <cstdint>
 #include <tl/expected.hpp>
 extern "C" {
 #include "FreeRTOS.h"
@@ -53,9 +54,10 @@ struct error
 		HAL_StatusTypeDef hal_status;
 		BaseType_t rtos_status;
 	};
+	std::uint32_t hal_detail = 0;
 
-	error(::component c, error_code ec, HAL_StatusTypeDef hs = HAL_OK)
-		: component(c), code(ec), hal_status(hs) {}
+	error(::component c, error_code ec, HAL_StatusTypeDef hs = HAL_OK, std::uint32_t detail = 0)
+		: component(c), code(ec), hal_status(hs), hal_detail(detail) {}
 
 	error(::component c, error_code ec, BaseType_t rs)
 		: component(c), code(ec), rtos_status(rs) {}
@@ -76,11 +78,11 @@ inline tl::unexpected<error> fail_rtos(error_code code, BaseType_t status = pdFA
 	return tl::make_unexpected(error{ component::rtos, code, status });
 }
 
-inline status from_hal(component source, HAL_StatusTypeDef status)
+inline status from_hal(component source, HAL_StatusTypeDef status, std::uint32_t detail = 0)
 {
 	if (status != HAL_OK)
 	{
-		return fail(source, error_code::hal_failure, status);
+		return tl::make_unexpected(error{ source, error_code::hal_failure, status, detail });
 	}
 
 	return {};

@@ -1,7 +1,11 @@
 #include "infrastructure/storage_service.h"
 
 #include "common/common.h"
+#include "fault/fault_injection.h"
 #include "libs/fatfs/sd_diskio.h"
+#include "fault/fault_injection.h"
+
+#include "perf.h"
 
 status storage_service::start()
 {
@@ -146,6 +150,7 @@ void storage_service::run()
 
 bool storage_service::run(fatfs::Volume &volume)
 {
+
 	(void)volume;
 	FRESULT result = fatfs::Volume::mkdir(file_.directory);
 	if (result != FR_OK && result != FR_EXIST)
@@ -189,7 +194,12 @@ bool storage_service::run(fatfs::Volume &volume)
 	{
 		if (xQueueReceive(inbox_, &record, sync_interval) == pdPASS)
 		{
+			PERF_SCOPE(logger_, "storage record");
+
 			result = log.write(record.text.data(), record.length);
+#ifdef FAULT_INJECTION_ENABLE
+			fault::task_inject_random_delay(1000, 5000);
+#endif
 			if (result != FR_OK)
 			{
 				(void)logger_.write("Unable to write log: %u\r\n", static_cast<unsigned>(result));
@@ -202,7 +212,12 @@ bool storage_service::run(fatfs::Volume &volume)
 		const TickType_t now = common::get_tick();
 		if (dirty && now - last_sync >= sync_interval)
 		{
+			PERF_SCOPE(logger_, "log sync");
+
 			result = log.sync();
+#ifdef FAULT_INJECTION_ENABLE
+			fault::task_inject_random_delay(0, 1000);
+#endif
 			if (result != FR_OK)
 			{
 				(void)logger_.write("Unable to sync log: %u\r\n", static_cast<unsigned>(result));

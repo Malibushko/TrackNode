@@ -7,6 +7,8 @@
 #include "infrastructure/storage_service.h"
 #include "infrastructure/supervisor.h"
 
+#include <charconv>
+
 node_controller::node_controller(sensor_service &sensor, storage_service &storage,
                                  indicator_service &indicator, logger_service &logger,
                                  supervisor &monitor)
@@ -82,6 +84,7 @@ void node_controller::task_entry(void *argument)
 
 void node_controller::run()
 {
+	constexpr TickType_t heartbeat_period = pdMS_TO_TICKS(1000);
 	take_sample();
 	TickType_t last_sample_at = xTaskGetTickCount();
 
@@ -95,9 +98,15 @@ void node_controller::run()
 			continue;
 		}
 		command received{};
-		if (xQueueReceive(inbox_, &received, sample_period_ - elapsed) == pdPASS)
+		const TickType_t until_sample = sample_period_ - elapsed;
+		const TickType_t wait = until_sample < heartbeat_period ? until_sample : heartbeat_period;
+		if (xQueueReceive(inbox_, &received, wait) == pdPASS)
 		{
 			handle_command(received);
+		}
+		if (sensor_initialized_ && !sensor_faulted_)
+		{
+			monitor_.progress(service_id::sensor, xTaskGetTickCount());
 		}
 	}
 }
@@ -109,10 +118,13 @@ status node_controller::init_sensor()
 	auto started = sensor_.init();
 	if (!started)
 	{
+		sensor_faulted_ = true;
 		last_sample_.valid = false;
 		monitor_.report(service_id::sensor, started.error(), service_health::degraded);
-		monitor_.progress(service_id::sensor, xTaskGetTickCount());
-		(void)logger_.write("Sensor init failed: %u\r\n", static_cast<unsigned>(started.error().code));
+		(void)logger_.write("Sensor init failed: %u (HAL=%u, I2C=0x%lx)\r\n",
+		                    static_cast<unsigned>(started.error().code),
+		                    static_cast<unsigned>(started.error().hal_status),
+		                    static_cast<unsigned long>(started.error().hal_detail));
 		return started;
 	}
 	sensor_initialized_ = true;
@@ -122,6 +134,10 @@ status node_controller::init_sensor()
 //////////////////////////////////////////////////////////////////////////
 void node_controller::take_sample()
 {
+	if (sensor_faulted_)
+	{
+		return;
+	}
 	if (!sensor_initialized_ && !init_sensor())
 	{
 		return;
@@ -138,6 +154,7 @@ void node_controller::take_sample()
 		    .pressure_pa = measurement->pressure_pa,
 		    .valid = true,
 		};
+		monitor_.progress(service_id::sensor, now);
 
 		if (auto record = format_sample_csv(last_sample_))
 		{
@@ -156,13 +173,14 @@ void node_controller::take_sample()
 	}
 	else
 	{
-		sensor_initialized_ = false;
+		sensor_faulted_ = true;
 		last_sample_.valid = false;
 		monitor_.report(service_id::sensor, measurement.error(), service_health::degraded);
-		(void)logger_.write("Sensor read failed: %u\r\n",
-		                    static_cast<unsigned>(measurement.error().code));
+		(void)logger_.write("Sensor read failed: %u (HAL=%u, I2C=0x%lx)\r\n",
+		                    static_cast<unsigned>(measurement.error().code),
+		                    static_cast<unsigned>(measurement.error().hal_status),
+		                    static_cast<unsigned long>(measurement.error().hal_detail));
 	}
-	monitor_.progress(service_id::sensor, now);
 }
 
 //////////////////////////////////////////////////////////////////////////

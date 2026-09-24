@@ -85,9 +85,10 @@ status i2c_bus::transmit(uint16_t address, std::span<uint8_t> data, uint32_t tim
 	{
 		return validation_status;
 	}
-
-	return from_hal(component::i2c_bus, HAL_I2C_Master_Transmit(&handle(), address, data.data(),
-	                                                            static_cast<uint16_t>(data.size()), timeout));
+	auto result = HAL_I2C_Master_Transmit(&handle(), address, data.data(),
+	                                      static_cast<uint16_t>(data.size()), timeout);
+	const auto detail = HAL_I2C_GetError(&i2c_handle);
+	return from_hal(component::i2c_bus, result, detail);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -99,9 +100,10 @@ status i2c_bus::receive(uint16_t address, std::span<uint8_t> data, uint32_t time
 	{
 		return validation_status;
 	}
-
-	return from_hal(component::i2c_bus, HAL_I2C_Master_Receive(&handle(), address, data.data(),
-	                                                           static_cast<uint16_t>(data.size()), timeout));
+	auto result = HAL_I2C_Master_Receive(&handle(), address, data.data(),
+	                                     static_cast<uint16_t>(data.size()), timeout);
+	const auto detail = HAL_I2C_GetError(&i2c_handle);
+	return from_hal(component::i2c_bus, result, detail);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -120,11 +122,11 @@ status i2c_bus::mem_write(uint16_t address, uint16_t mem_address, std::span<uint
 	{
 		return validation_status;
 	}
-
 	auto result = HAL_I2C_Mem_Write(&i2c_handle, address, mem_address, mem_addr_size, data.data(),
 	                                static_cast<uint16_t>(data.size()), timeout);
 
-	return from_hal(component::i2c_bus, result);
+	const auto detail = HAL_I2C_GetError(&i2c_handle);
+	return from_hal(component::i2c_bus, result, detail);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -143,10 +145,10 @@ status i2c_bus::mem_read(uint16_t address, uint16_t mem_address, std::span<uint8
 	{
 		return validation_status;
 	}
-
 	auto result = HAL_I2C_Mem_Read(&i2c_handle, address, mem_address, mem_addr_size, data.data(),
 	                               static_cast<uint16_t>(data.size()), timeout);
-	return from_hal(component::i2c_bus, result);
+	const auto detail = HAL_I2C_GetError(&i2c_handle);
+	return from_hal(component::i2c_bus, result, detail);
 }
 
 //////////////////////////////////////////////////////////////////////////
