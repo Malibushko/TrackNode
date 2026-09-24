@@ -3,6 +3,8 @@
 #include "application/command_sink.h"
 #include "application/sample.h"
 
+#include <optional>
+
 class sensor_service;
 class storage_service;
 class indicator_service;
@@ -47,7 +49,7 @@ private: // State
 	supervisor &monitor_;
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;
-	sensor_sample last_sample_{};
+	std::optional<sensor_sample> last_sample_;
 	std::uint32_t next_sequence_ = 1;
 	TickType_t sample_period_ = pdMS_TO_TICKS(3000);
 	bool sensor_initialized_ = false;

@@ -119,7 +119,10 @@ status node_controller::init_sensor()
 	if (!started)
 	{
 		sensor_faulted_ = true;
-		last_sample_.valid = false;
+		if (last_sample_)
+		{
+			last_sample_->valid = false;
+		}
 		monitor_.report(service_id::sensor, started.error(), service_health::degraded);
 		(void)logger_.write("Sensor init failed: %u (HAL=%u, I2C=0x%lx)\r\n",
 		                    static_cast<unsigned>(started.error().code),
@@ -156,7 +159,7 @@ void node_controller::take_sample()
 		};
 		monitor_.progress(service_id::sensor, now);
 
-		if (auto record = format_sample_csv(last_sample_))
+		if (auto record = format_sample_csv(*last_sample_))
 		{
 			monitor_.set_health(service_id::sensor, service_health::ready);
 #ifdef FAULT_INJECTION_ENABLE
@@ -166,7 +169,7 @@ void node_controller::take_sample()
 		}
 		else
 		{
-			last_sample_.valid = false;
+			last_sample_->valid = false;
 			monitor_.report(service_id::sensor, record.error(), service_health::degraded);
 			(void)logger_.write("Sensor sample cannot be recorded\r\n");
 		}
@@ -174,7 +177,10 @@ void node_controller::take_sample()
 	else
 	{
 		sensor_faulted_ = true;
-		last_sample_.valid = false;
+		if (last_sample_)
+		{
+			last_sample_->valid = false;
+		}
 		monitor_.report(service_id::sensor, measurement.error(), service_health::degraded);
 		(void)logger_.write("Sensor read failed: %u (HAL=%u, I2C=0x%lx)\r\n",
 		                    static_cast<unsigned>(measurement.error().code),
@@ -225,23 +231,21 @@ void node_controller::handle_ping()
 
 bool node_controller::ensure_sample_available()
 {
-	if (last_sample_.valid)
-	{
-		return true;
-	}
-
-	if (last_sample_.sequence == 0)
+	if (!last_sample_)
 	{
 		(void)logger_.write("Sensor sample unavailable (no measurement)\r\n");
+		return false;
 	}
-	else
+
+	if (!last_sample_->valid)
 	{
-		const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_.timestamp);
+		const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_->timestamp);
 		(void)logger_.write("Sensor sample invalid (last age=%lu ms, seq=%lu)\r\n",
 		                    static_cast<unsigned long>(age),
-		                    static_cast<unsigned long>(last_sample_.sequence));
+		                    static_cast<unsigned long>(last_sample_->sequence));
+		return false;
 	}
-	return false;
+	return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -253,11 +257,11 @@ void node_controller::handle_read_temperature()
 		return;
 	}
 
-	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_.timestamp);
+	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_->timestamp);
 	(void)logger_.write("Temperature = %.2f C (age=%lu ms, seq=%lu)\r\n",
-	                    static_cast<double>(last_sample_.temperature_c),
+	                    static_cast<double>(last_sample_->temperature_c),
 	                    static_cast<unsigned long>(age),
-	                    static_cast<unsigned long>(last_sample_.sequence));
+	                    static_cast<unsigned long>(last_sample_->sequence));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -269,11 +273,11 @@ void node_controller::handle_read_pressure()
 		return;
 	}
 
-	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_.timestamp);
+	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_->timestamp);
 	(void)logger_.write("Pressure = %.2f Pa (age=%lu ms, seq=%lu)\r\n",
-	                    static_cast<double>(last_sample_.pressure_pa),
+	                    static_cast<double>(last_sample_->pressure_pa),
 	                    static_cast<unsigned long>(age),
-	                    static_cast<unsigned long>(last_sample_.sequence));
+	                    static_cast<unsigned long>(last_sample_->sequence));
 }
 
 //////////////////////////////////////////////////////////////////////////
