@@ -142,6 +142,9 @@ void node_controller::take_sample()
 		if (auto record = format_sample_csv(last_sample_))
 		{
 			monitor_.set_health(service_id::sensor, service_health::ready);
+#ifdef FAULT_INJECTION_ENABLE
+		for (int i = 0; i < 3; i++)
+#endif
 			(void)storage_.submit_record(*record);
 		}
 		else
@@ -153,6 +156,7 @@ void node_controller::take_sample()
 	}
 	else
 	{
+		sensor_initialized_ = false;
 		last_sample_.valid = false;
 		monitor_.report(service_id::sensor, measurement.error(), service_health::degraded);
 		(void)logger_.write("Sensor read failed: %u\r\n",
@@ -267,8 +271,17 @@ void node_controller::handle_read_log()
 	}
 
 	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - log.observed_at);
-	(void)logger_.write("Log size: %llu bytes (age=%lu ms, dropped=%lu)\r\n",
-	                    static_cast<unsigned long long>(log.log_size),
+	char size_text[21]{};
+	const auto converted = std::to_chars(size_text, size_text + sizeof(size_text) - 1,
+	                                     log.log_size);
+	if (converted.ec != std::errc{})
+	{
+		(void)logger_.write("Log size unavailable\r\n");
+		return;
+	}
+	*converted.ptr = '\0';
+	(void)logger_.write("Log size: %s bytes (age=%lu ms, dropped=%lu)\r\n",
+	                    size_text,
 	                    static_cast<unsigned long>(age),
 	                    static_cast<unsigned long>(log.dropped_samples));
 }
