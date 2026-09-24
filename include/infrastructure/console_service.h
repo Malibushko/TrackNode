@@ -7,13 +7,12 @@
 
 #include <atomic>
 
-// UART framing and command delivery; command semantics live in node_controller.
 class console_service
 {
 public:
 	console_service(uart &input, command_sink &commands,
 	                logger_service &logger, supervisor &monitor)
-	    : input_(input), protocol_(input_), commands_(commands),
+	    : input_(input), commands_(commands),
 	      logger_(logger), monitor_(monitor) {}
 
 public: // Common lifecycle
@@ -26,10 +25,11 @@ public: // Console API
 private: // Common task loop
 	static void task_entry(void *argument);
 	void run();
+	void handle_event(protocol_event event);
 
 private: // State
 	uart_read_adapter input_;
-	track_node_control_protocol<uart_read_adapter> protocol_;
+	track_node_control_protocol protocol_;
 	command_sink &commands_;
 	logger_service &logger_;
 	supervisor &monitor_;

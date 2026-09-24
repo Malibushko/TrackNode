@@ -36,6 +36,7 @@ private: // Application behavior
 	void handle_read_temperature();
 	void handle_read_pressure();
 	void handle_read_log();
+	void handle_set_sample_period(std::uint32_t period_ms);
 	bool ensure_sample_available();
 
 private: // State
@@ -48,5 +49,6 @@ private: // State
 	TaskHandle_t task_ = nullptr;
 	sensor_sample last_sample_{};
 	std::uint32_t next_sequence_ = 1;
+	TickType_t sample_period_ = pdMS_TO_TICKS(3000);
 	bool sensor_initialized_ = false;
 };

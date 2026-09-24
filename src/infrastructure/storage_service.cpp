@@ -121,7 +121,7 @@ void storage_service::run()
 		const FRESULT mounted = volume.mount();
 		if (mounted == FR_OK)
 		{
-			write_session(volume);
+			run(volume);
 		}
 		else
 		{
@@ -144,7 +144,7 @@ void storage_service::run()
 
 //////////////////////////////////////////////////////////////////////////
 
-bool storage_service::write_session(fatfs::Volume &volume)
+bool storage_service::run(fatfs::Volume &volume)
 {
 	(void)volume;
 	FRESULT result = fatfs::Volume::mkdir(file_.directory);

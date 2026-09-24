@@ -41,16 +41,14 @@ void console_service::run()
 {
 	while (true)
 	{
-		if (protocol_.process_next_byte())
+		const auto byte = input_.read();
+		if (!input_.last_error())
 		{
-			if (auto accepted = commands_.submit(protocol_.read()); !accepted)
-			{
-				rejected_.fetch_add(1);
-				(void)logger_.write("Command queue full\r\n");
-			}
+			handle_event(protocol_.feed(byte));
 		}
 		if (const auto failure = input_.last_error())
 		{
+			protocol_.reset();
 			monitor_.report(service_id::console, *failure, service_health::degraded);
 			vTaskDelay(pdMS_TO_TICKS(10));
 		}
@@ -58,6 +56,46 @@ void console_service::run()
 		{
 			monitor_.set_health(service_id::console, service_health::ready);
 		}
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void console_service::handle_event(protocol_event event)
+{
+	switch (event.type)
+	{
+		case protocol_event_type::none:
+			break;
+
+		case protocol_event_type::command:
+			if (auto accepted = commands_.submit(event.value); !accepted)
+			{
+				rejected_.fetch_add(1);
+				(void)logger_.write("ERR COMMAND_QUEUE_FULL\r\n");
+			}
+			break;
+
+		case protocol_event_type::parse_error:
+			rejected_.fetch_add(1);
+			switch (event.error)
+			{
+				case command_parse_error::unknown_command:
+					(void)logger_.write("ERR UNKNOWN_COMMAND\r\n");
+					break;
+				case command_parse_error::invalid_syntax:
+					(void)logger_.write("ERR INVALID_SYNTAX\r\n");
+					break;
+				case command_parse_error::invalid_number:
+					(void)logger_.write("ERR INVALID_NUMBER\r\n");
+					break;
+			}
+			break;
+
+		case protocol_event_type::line_too_long:
+			rejected_.fetch_add(1);
+			(void)logger_.write("ERR LINE_TOO_LONG\r\n");
+			break;
 	}
 }
 

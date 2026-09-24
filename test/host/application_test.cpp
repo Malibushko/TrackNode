@@ -1,24 +1,6 @@
 #include "infrastructure/status_indicator.h"
-#include "infrastructure/track_node_control_protocol.h"
 #include <cassert>
 #include <cstdio>
-#include <vector>
-
-struct input
-{
-	std::vector<uint8_t> bytes;
-	size_t position = 0;
-
-	uint8_t read()
-	{
-		return bytes[position++];
-	}
-
-	size_t available()
-	{
-		return bytes.size() - position;
-	}
-};
 
 int main()
 {
@@ -59,20 +41,5 @@ int main()
 	led.fail_write = true;
 	assert(!indicator.update(1650, program_state::hal_error));
 
-	input stream;
-	track_node_control_protocol protocol{ stream };
-	stream.bytes = { 'x', 'p', 't', 'c', 'l' };
-	assert(!protocol.process_next_byte());
-	assert(!protocol.available());
-	assert(protocol.process_next_byte());
-	assert(protocol.process_next_byte());
-	assert(protocol.process_next_byte());
-	assert(protocol.process_next_byte());
-	assert(stream.position == stream.bytes.size());
-	assert(protocol.read() == command::ping);
-	assert(protocol.read() == command::read_temperature);
-	assert(protocol.read() == command::read_pressure);
-	assert(protocol.read() == command::read_log);
-	assert(!protocol.available());
-	std::puts("PASS: blink sequence, wraparound, error priority, GPIO failure, command decoding");
+	std::puts("PASS: blink sequence, wraparound, error priority, GPIO failure");
 }

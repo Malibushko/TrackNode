@@ -1,44 +1,38 @@
 #pragma once
 
 #include "application/command.h"
-#include "common/command_protocol.h"
+#include "infrastructure/command_parser.h"
 
-template<ByteInput Input>
-class track_node_control_protocol : public command_protocol<Input, command, track_node_control_protocol<Input>>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+enum class protocol_event_type
 {
-	using base = command_protocol<
-		Input,
-		command,
-		track_node_control_protocol<Input>
-	>;
+	none,
+	command,
+	parse_error,
+	line_too_long
+};
 
+struct protocol_event
+{
+	protocol_event_type type = protocol_event_type::none;
+	::command value{};
+	command_parse_error error = command_parse_error::invalid_syntax;
+};
+
+// Collects one bounded UART line, then hands its contents to the pure parser.
+class track_node_control_protocol
+{
 public:
-	explicit track_node_control_protocol(Input& input)
-		: base(input)
-	{}
+	static constexpr std::size_t max_line_length = 64;
 
-	std::optional<command> decode(std::uint8_t byte)
-	{
-		if (byte == 'p')
-		{
-			return command::ping;
-		}
+	protocol_event feed(std::uint8_t byte);
+	void reset();
 
-		if (byte == 't')
-		{
-			return command::read_temperature;
-		}
-
-		if (byte == 'c')
-		{
-			return command::read_pressure;
-		}
-
-		if (byte == 'l')
-		{
-			return command::read_log;
-		}
-
-		return std::nullopt;
-	}
+private:
+	std::array<char, max_line_length> line_{};
+	std::size_t length_ = 0;
+	bool discarding_ = false;
 };

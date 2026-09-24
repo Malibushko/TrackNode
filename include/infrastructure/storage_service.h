@@ -35,7 +35,7 @@ private: // Common task loop
 	void run();
 
 private: // Storage internals
-	bool write_session(fatfs::Volume &volume);
+	bool run(fatfs::Volume &volume);
 	void set_snapshot(service_health health, std::uint64_t size, TickType_t now);
 
 private: // State

@@ -18,6 +18,12 @@ target_include_directories(application_test PRIVATE application_fakes)
 target_link_libraries(application_test PRIVATE host_headers)
 add_test(NAME application_test COMMAND application_test)
 
+add_executable(command_protocol_test command_protocol_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/command_parser.cpp"
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/track_node_control_protocol.cpp")
+target_link_libraries(command_protocol_test PRIVATE host_headers)
+add_test(NAME command_protocol_test COMMAND command_protocol_test)
+
 add_executable(supervisor_policy_test supervisor_policy_test.cpp)
 target_link_libraries(supervisor_policy_test PRIVATE host_headers)
 add_test(NAME supervisor_policy_test COMMAND supervisor_policy_test)
@@ -27,7 +33,7 @@ target_link_libraries(log_record_test PRIVATE host_headers)
 add_test(NAME log_record_test COMMAND log_record_test)
 
 if(MINGW)
-    foreach(test_target component_list_test pwm_test application_test supervisor_policy_test log_record_test)
+    foreach(test_target component_list_test pwm_test application_test command_protocol_test supervisor_policy_test log_record_test)
         target_link_options(${test_target} PRIVATE -static-libgcc -static-libstdc++)
     endforeach()
 endif()

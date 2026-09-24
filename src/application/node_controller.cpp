@@ -82,21 +82,20 @@ void node_controller::task_entry(void *argument)
 
 void node_controller::run()
 {
-	constexpr TickType_t period = pdMS_TO_TICKS(3000);
 	take_sample();
 	TickType_t last_sample_at = xTaskGetTickCount();
 
 	for (;;)
 	{
 		const TickType_t elapsed = xTaskGetTickCount() - last_sample_at;
-		if (elapsed >= period)
+		if (elapsed >= sample_period_)
 		{
 			take_sample();
 			last_sample_at = xTaskGetTickCount();
 			continue;
 		}
 		command received{};
-		if (xQueueReceive(inbox_, &received, period - elapsed) == pdPASS)
+		if (xQueueReceive(inbox_, &received, sample_period_ - elapsed) == pdPASS)
 		{
 			handle_command(received);
 		}
@@ -121,7 +120,6 @@ status node_controller::init_sensor()
 }
 
 //////////////////////////////////////////////////////////////////////////
-///
 void node_controller::take_sample()
 {
 	if (!sensor_initialized_ && !init_sensor())
@@ -167,22 +165,26 @@ void node_controller::take_sample()
 
 void node_controller::handle_command(command value)
 {
-	switch (value)
+	switch (value.type)
 	{
-		case command::ping:
+		case command_type::ping:
 			handle_ping();
 			break;
 
-		case command::read_temperature:
+		case command_type::read_temperature:
 			handle_read_temperature();
 			break;
 
-		case command::read_pressure:
+		case command_type::read_pressure:
 			handle_read_pressure();
 			break;
 
-		case command::read_log:
+		case command_type::read_log:
 			handle_read_log();
+			break;
+
+		case command_type::set_sample_period:
+			handle_set_sample_period(value.sample_period_ms);
 			break;
 	}
 }
@@ -269,6 +271,20 @@ void node_controller::handle_read_log()
 	                    static_cast<unsigned long long>(log.log_size),
 	                    static_cast<unsigned long>(age),
 	                    static_cast<unsigned long>(log.dropped_samples));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_set_sample_period(std::uint32_t period_ms)
+{
+	if (period_ms < 100 || period_ms > 60000)
+	{
+		(void)logger_.write("ERR SAMPLE_PERIOD_RANGE 100..60000\r\n");
+		return;
+	}
+
+	sample_period_ = pdMS_TO_TICKS(period_ms);
+	(void)logger_.write("OK SAMPLE_PERIOD %lu\r\n", static_cast<unsigned long>(period_ms));
 }
 
 //////////////////////////////////////////////////////////////////////////
