@@ -15,7 +15,6 @@ public:
 	struct file_config
 	{
 		const char *directory;
-		const char *path;
 		const char *header;
 	};
 
@@ -36,7 +35,8 @@ private: // Common task loop
 
 private: // Storage internals
 	bool run(fatfs::Volume &volume);
-	void set_snapshot(service_health health, std::uint64_t size, TickType_t now);
+	void set_snapshot(service_health health, std::uint64_t size, TickType_t now,
+	                  const char *file_name = nullptr);
 
 private: // State
 	sd_card &card_;

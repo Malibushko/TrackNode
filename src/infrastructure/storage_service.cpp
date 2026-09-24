@@ -3,13 +3,77 @@
 #include "common/common.h"
 #include "fault/fault_injection.h"
 #include "libs/fatfs/sd_diskio.h"
-#include "fault/fault_injection.h"
 
 #include "perf.h"
 
+#include <cstdio>
+#include <cstring>
+
+namespace
+{
+constexpr std::uint32_t max_session_id = 99999999;
+
+bool parse_session_id(const char *name, std::uint32_t &id)
+{
+	if (std::strlen(name) != 12 || name[8] != '.' ||
+	    (name[9] | 0x20) != 'c' || (name[10] | 0x20) != 's' ||
+	    (name[11] | 0x20) != 'v')
+	{
+		return false;
+	}
+
+	std::uint32_t parsed = 0;
+	for (int index = 0; index < 8; ++index)
+	{
+		if (name[index] < '0' || name[index] > '9')
+		{
+			return false;
+		}
+		parsed = parsed * 10 + static_cast<std::uint32_t>(name[index] - '0');
+	}
+	id = parsed;
+	return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+FRESULT next_session_id(const char *path, std::uint32_t &id)
+{
+	fatfs::Dir directory;
+	FRESULT result = directory.open(path);
+	if (result != FR_OK)
+	{
+		return result;
+	}
+
+	std::uint32_t highest = 0;
+	result = directory.for_each([&highest](const FILINFO &entry)
+	{
+		std::uint32_t existing = 0;
+		if (!fatfs::Dir::is_dir(entry) && parse_session_id(entry.fname, existing) &&
+		    existing > highest)
+		{
+			highest = existing;
+		}
+	});
+	if (result != FR_OK)
+	{
+		return result;
+	}
+	if (highest == max_session_id)
+	{
+		return FR_DENIED;
+	}
+	id = highest + 1;
+	return FR_OK;
+}
+
+//////////////////////////////////////////////////////////////////////////
+}
+
 status storage_service::start()
 {
-	if (!file_.directory || !file_.path || !file_.header)
+	if (!file_.directory || !file_.header)
 	{
 		return fail(component::storage, error_code::invalid_config);
 	}
@@ -88,10 +152,16 @@ storage_snapshot storage_service::snapshot() const
 
 //////////////////////////////////////////////////////////////////////////
 
-void storage_service::set_snapshot(service_health health, std::uint64_t size, TickType_t now)
+void storage_service::set_snapshot(service_health health, std::uint64_t size, TickType_t now,
+	                               const char *file_name)
 {
 	taskENTER_CRITICAL();
 	snapshot_.health = health;
+	snapshot_.file_name.fill('\0');
+	if (file_name)
+	{
+		std::strncpy(snapshot_.file_name.data(), file_name, snapshot_.file_name.size() - 1);
+	}
 	snapshot_.log_size = size;
 	snapshot_.observed_at = now;
 	taskEXIT_CRITICAL();
@@ -150,7 +220,6 @@ void storage_service::run()
 
 bool storage_service::run(fatfs::Volume &volume)
 {
-
 	(void)volume;
 	FRESULT result = fatfs::Volume::mkdir(file_.directory);
 	if (result != FR_OK && result != FR_EXIST)
@@ -159,32 +228,56 @@ bool storage_service::run(fatfs::Volume &volume)
 		return false;
 	}
 
+	std::uint32_t session_id = 0;
+	result = next_session_id(file_.directory, session_id);
+	if (result != FR_OK)
+	{
+		(void)logger_.write("Unable to find next log session: %u\r\n", static_cast<unsigned>(result));
+		return false;
+	}
+
 	fatfs::File log;
-	result = log.open(file_.path, FA_WRITE | FA_OPEN_APPEND);
+	char file_name[13]{};
+	char path[64]{};
+	for (;;)
+	{
+		const int name_length = std::snprintf(file_name, sizeof(file_name), "%08lu.csv",
+		                                      static_cast<unsigned long>(session_id));
+		const int path_length = std::snprintf(path, sizeof(path), "%s/%s",
+		                                      file_.directory, file_name);
+		if (name_length != 12 || path_length < 0 || path_length >= static_cast<int>(sizeof(path)))
+		{
+			(void)logger_.write("Log path is too long\r\n");
+			return false;
+		}
+		result = log.open(path, FA_WRITE | FA_CREATE_NEW);
+		if (result != FR_EXIST || session_id == max_session_id)
+		{
+			break;
+		}
+		++session_id;
+	}
 	if (result != FR_OK)
 	{
 		(void)logger_.write("Unable to open log file: %u\r\n", static_cast<unsigned>(result));
 		return false;
 	}
 
-	if (log.size() == 0)
+	result = log.write_string(file_.header);
+	if (result == FR_OK)
 	{
-		result = log.write_string(file_.header);
-		if (result == FR_OK)
-		{
-			result = log.sync();
-		}
-		if (result != FR_OK)
-		{
-			(void)logger_.write("Unable to initialize log file: %u\r\n", static_cast<unsigned>(result));
-			return false;
-		}
+		result = log.sync();
+	}
+	if (result != FR_OK)
+	{
+		(void)logger_.write("Unable to initialize log file: %u\r\n", static_cast<unsigned>(result));
+		return false;
 	}
 
-	set_snapshot(service_health::ready, log.size(), common::get_tick());
+	set_snapshot(service_health::ready, log.size(), common::get_tick(), file_name);
 	monitor_.set_health(service_id::storage, service_health::ready);
 	monitor_.progress(service_id::storage, common::get_tick());
-	(void)logger_.write("Storage ready\r\n");
+	(void)logger_.write("Storage ready: %s\r\n", path);
 
 	log_record record{};
 	constexpr TickType_t sync_interval = pdMS_TO_TICKS(5000);
@@ -206,7 +299,7 @@ bool storage_service::run(fatfs::Volume &volume)
 				return false;
 			}
 			dirty = true;
-			set_snapshot(service_health::ready, log.size(), common::get_tick());
+			set_snapshot(service_health::ready, log.size(), common::get_tick(), file_name);
 		}
 
 		const TickType_t now = common::get_tick();

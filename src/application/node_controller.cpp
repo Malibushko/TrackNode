@@ -302,8 +302,8 @@ void node_controller::handle_read_log()
 		return;
 	}
 	*converted.ptr = '\0';
-	(void)logger_.write("Log size: %s bytes (age=%lu ms, dropped=%lu)\r\n",
-	                    size_text,
+	(void)logger_.write("Log %s: %s bytes (age=%lu ms, dropped=%lu)\r\n",
+	                    log.file_name.data(), size_text,
 	                    static_cast<unsigned long>(age),
 	                    static_cast<unsigned long>(log.dropped_samples));
 }
