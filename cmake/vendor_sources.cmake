@@ -1,5 +1,5 @@
 # Keep vendored source trees unmodified; list the selected upstream files here.
-target_sources(track_node.elf PRIVATE
+target_sources(${TRACK_NODE_TARGET} PRIVATE
     "${PROJECT_SOURCE_DIR}/lib/FreeRTOS/croutine.c"
     "${PROJECT_SOURCE_DIR}/lib/FreeRTOS/event_groups.c"
     "${PROJECT_SOURCE_DIR}/lib/FreeRTOS/list.c"

@@ -14,44 +14,21 @@ if(CMAKE_CROSSCOMPILING)
     set(HAL_ROOT "${STM32CUBE_F4_ROOT}/Drivers/STM32F4xx_HAL_Driver")
     set(CMSIS_ROOT "${STM32CUBE_F4_ROOT}/Drivers/CMSIS")
     set(DEVICE_ROOT "${CMSIS_ROOT}/Device/ST/STM32F4xx")
+    include(cmake/track_node_options.cmake)
 
-    add_executable(track_node.elf)
+    add_executable(${TRACK_NODE_TARGET})
     add_subdirectory(src)
     include(cmake/stm32cube_sources.cmake)
     include(cmake/vendor_sources.cmake)
 
-    target_include_directories(track_node.elf PRIVATE
-        include
-        src/libs/freertos
-        lib/FreeRTOS/include
-        lib/FreeRTOS/portable/ARM_CM4F
-        lib/fatfs/source
-        lib/expected/include
-        "${HAL_ROOT}/Inc"
-        "${CMSIS_ROOT}/Include"
-        "${DEVICE_ROOT}/Include"
-    )
+    target_include_directories(${TRACK_NODE_TARGET} PRIVATE ${TRACK_NODE_INCLUDE_DIRECTORIES})
+    target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE ${TRACK_NODE_COMPILE_DEFINITIONS})
+    target_compile_options(${TRACK_NODE_TARGET} PRIVATE ${TRACK_NODE_COMPILE_OPTIONS})
+    target_link_options(${TRACK_NODE_TARGET} PRIVATE ${TRACK_NODE_LINK_OPTIONS})
 
-    target_compile_definitions(track_node.elf PRIVATE
-        STM32F411xE USE_HAL_DRIVER HSE_VALUE=25000000U
-    )
-    target_compile_options(track_node.elf PRIVATE
-        -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
-        -ffunction-sections -fdata-sections
-        $<$<CONFIG:Debug>:-O0;-g3;-ggdb3>
-    )
-    target_link_options(track_node.elf PRIVATE
-        -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
-        --specs=nano.specs --specs=nosys.specs
-        "-T${CMAKE_CURRENT_SOURCE_DIR}/ld/STM32F411CEUX_FLASH.ld"
-        -Wl,--gc-sections
-        -Wl,-u,_printf_float
-        "-Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/track_node.map"
-    )
-
-    add_custom_command(TARGET track_node.elf POST_BUILD
-        COMMAND "${ARM_OBJCOPY}" -O binary "$<TARGET_FILE:track_node.elf>" "${CMAKE_CURRENT_BINARY_DIR}/track_node.bin"
-        COMMAND "${ARM_SIZE}" "$<TARGET_FILE:track_node.elf>"
+    add_custom_command(TARGET ${TRACK_NODE_TARGET} POST_BUILD
+        COMMAND "${ARM_OBJCOPY}" -O binary "$<TARGET_FILE:${TRACK_NODE_TARGET}>" "${TRACK_NODE_BINARY}"
+        COMMAND "${ARM_SIZE}" "$<TARGET_FILE:${TRACK_NODE_TARGET}>"
         VERBATIM
     )
 else()

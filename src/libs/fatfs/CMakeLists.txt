@@ -1,1 +1,1 @@
-target_sources(track_node.elf PRIVATE sd_diskio.cpp)
+target_sources(${TRACK_NODE_TARGET} PRIVATE sd_diskio.cpp)

@@ -1,4 +1,4 @@
-target_sources(track_node.elf PRIVATE
+target_sources(${TRACK_NODE_TARGET} PRIVATE
     error.cpp
     interrupts.cpp
 )

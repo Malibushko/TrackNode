@@ -1,1 +1,1 @@
-target_sources(track_node.elf PRIVATE common.cpp)
+target_sources(${TRACK_NODE_TARGET} PRIVATE common.cpp)
