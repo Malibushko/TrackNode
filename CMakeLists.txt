@@ -31,6 +31,21 @@ if(CMAKE_CROSSCOMPILING)
         COMMAND "${ARM_SIZE}" "$<TARGET_FILE:${TRACK_NODE_TARGET}>"
         VERBATIM
     )
+
+    find_program(TRACK_NODE_PROGRAMMER_CLI NAMES STM32_Programmer_CLI)
+    if(TRACK_NODE_PROGRAMMER_CLI)
+        add_custom_target(flash
+            COMMAND "${TRACK_NODE_PROGRAMMER_CLI}"
+                    -c ${TRACK_NODE_FLASH_CONNECT_ARGS}
+                    -w "$<TARGET_FILE:${TRACK_NODE_TARGET}>"
+                    ${TRACK_NODE_FLASH_OPTIONS}
+            DEPENDS ${TRACK_NODE_TARGET}
+            USES_TERMINAL
+            VERBATIM
+        )
+    else()
+        message(STATUS "STM32_Programmer_CLI not found; flash target unavailable")
+    endif()
 else()
     enable_testing()
     add_subdirectory(test/host)
