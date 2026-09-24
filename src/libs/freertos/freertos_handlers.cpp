@@ -7,3 +7,5 @@ extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskNa
 	__disable_irq();
 	for (;;) {}
 }
+
+//////////////////////////////////////////////////////////////////////////

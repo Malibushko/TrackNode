@@ -59,6 +59,8 @@ status pwm::init()
 	return operation_status;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status pwm::start()
 {
 	if (!initialized_)
@@ -69,6 +71,8 @@ status pwm::start()
 	return from_hal(component::pwm, HAL_TIM_PWM_Start(&timer_.handle_, config_.channel));
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status pwm::stop()
 {
 	if (!initialized_)
@@ -78,6 +82,8 @@ status pwm::stop()
 
 	return from_hal(component::pwm, HAL_TIM_PWM_Stop(&timer_.handle_, config_.channel));
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status pwm::set_duty(float fraction)
 {
@@ -98,3 +104,5 @@ status pwm::set_duty(float fraction)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////

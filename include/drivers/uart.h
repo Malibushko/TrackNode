@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <atomic>
 #include <cstdint>
+#include <coroutine>
 
 struct uart_config
 {
@@ -37,6 +38,39 @@ public:
 	status init();
 	status write(const uint8_t *data, size_t size, uint32_t timeout_ms = 100);
 
+	class tx_awaitable
+	{
+	public:
+		tx_awaitable(uart &owner, const uint8_t *data, size_t size)
+		    : owner_(owner), data_(data), size_(size) {}
+
+		bool await_ready() const noexcept { return size_ == 0; }
+		bool await_suspend(std::coroutine_handle<>)
+		{
+			started_ = owner_.begin_write(data_, size_);
+			return started_.has_value();
+		}
+		status await_resume()
+		{
+			if (!started_ || size_ == 0)
+			{
+				return started_;
+			}
+			return owner_.finish_write();
+		}
+
+	private:
+		uart &owner_;
+		const uint8_t *data_;
+		size_t size_;
+		status started_{};
+	};
+
+	[[nodiscard]] tx_awaitable write_async(const uint8_t *data, size_t size)
+	{
+		return tx_awaitable{ *this, data, size };
+	}
+
 	result<size_t> read(uint8_t *data, size_t size, uint32_t timeout_ms = portMAX_DELAY);
 
 	[[nodiscard]] size_t available() const;
@@ -51,6 +85,8 @@ public:
 	DMA_HandleTypeDef &hdma_tx() { return hdma_tx_; }
 
 private:
+	status begin_write(const uint8_t *data, size_t size);
+	status finish_write();
 	static constexpr size_t rx_dma_buffer_capacity = 64;
 
 	void on_rx_event(size_t write_pos, BaseType_t *higher_priority_woken);

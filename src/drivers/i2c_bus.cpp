@@ -76,6 +76,8 @@ status i2c_bus::init()
 	return init_status;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status i2c_bus::transmit(uint16_t address, std::span<uint8_t> data, uint32_t timeout)
 {
 	auto validation_status = validate_transfer(address, data);
@@ -88,6 +90,8 @@ status i2c_bus::transmit(uint16_t address, std::span<uint8_t> data, uint32_t tim
 	                                                            static_cast<uint16_t>(data.size()), timeout));
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status i2c_bus::receive(uint16_t address, std::span<uint8_t> data, uint32_t timeout)
 {
 	auto validation_status = validate_transfer(address, data);
@@ -99,6 +103,8 @@ status i2c_bus::receive(uint16_t address, std::span<uint8_t> data, uint32_t time
 	return from_hal(component::i2c_bus, HAL_I2C_Master_Receive(&handle(), address, data.data(),
 	                                                           static_cast<uint16_t>(data.size()), timeout));
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status i2c_bus::mem_write(uint16_t address, uint16_t mem_address, std::span<uint8_t> data, uint16_t mem_addr_size,
                           uint32_t timeout)
@@ -121,6 +127,8 @@ status i2c_bus::mem_write(uint16_t address, uint16_t mem_address, std::span<uint
 	return from_hal(component::i2c_bus, result);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status i2c_bus::mem_read(uint16_t address, uint16_t mem_address, std::span<uint8_t> data, uint16_t mem_addr_size,
                          uint32_t timeout)
 {
@@ -141,6 +149,8 @@ status i2c_bus::mem_read(uint16_t address, uint16_t mem_address, std::span<uint8
 	return from_hal(component::i2c_bus, result);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status i2c_bus::validate_transfer(uint16_t address, std::span<uint8_t> data) const
 {
 	if (!initialized_)
@@ -160,6 +170,8 @@ status i2c_bus::validate_transfer(uint16_t address, std::span<uint8_t> data) con
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status i2c_bus::validate_memory(uint16_t address, uint16_t address_size) const
 {
 	if ((address_size != I2C_MEMADD_SIZE_8BIT && address_size != I2C_MEMADD_SIZE_16BIT) ||
@@ -170,3 +182,5 @@ status i2c_bus::validate_memory(uint16_t address, uint16_t address_size) const
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////

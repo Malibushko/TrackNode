@@ -40,14 +40,16 @@ HAL_StatusTypeDef HAL_TIM_PWM_Stop(TIM_HandleTypeDef *, uint32_t)
 int main()
 {
 	::timer timer{ { TIM2, 71, 999 } };
-	::pwm pwm{ timer, {} };
+	pwm_config channel_two{};
+	channel_two.channel = TIM_CHANNEL_2;
+	::pwm pwm{ timer, channel_two };
 	assert(!pwm.init());
 	assert(!pwm.start());
 	assert(!pwm.set_duty(0.5f));
 	assert(timer.init());
 	config_status = HAL_ERROR;
 	auto failure = pwm.init();
-	assert(!failure && failure.error().status == HAL_ERROR);
+	assert(!failure && failure.error().hal_status == HAL_ERROR);
 	config_status = HAL_OK;
 	assert(pwm.init());
 	assert(!pwm.init());
@@ -67,12 +69,12 @@ int main()
 	assert(!pwm.set_duty(std::numeric_limits<float>::infinity()));
 	assert(tim2.CCR[1] == 1000);
 	start_status = HAL_BUSY;
-	assert(pwm.start().error().status == HAL_BUSY);
+	assert(pwm.start().error().hal_status == HAL_BUSY);
 	start_status = HAL_OK;
 	assert(pwm.start());
 	assert(pwm.stop());
 
-	::pwm duplicate{ timer, {} };
+	::pwm duplicate{ timer, channel_two };
 	assert(!duplicate.init());
 	pwm_config other_config;
 	other_config.channel = TIM_CHANNEL_1;
@@ -87,7 +89,7 @@ int main()
 	assert(!overflow.init());
 	::timer wide{ { TIM5, 0, UINT32_MAX - 1u } };
 	assert(wide.init());
-	::pwm wide_pwm{ wide, {} };
+	::pwm wide_pwm{ wide, channel_two };
 	assert(wide_pwm.init());
 	assert(wide_pwm.set_duty(1));
 	assert(tim5.CCR[1] == UINT32_MAX);
@@ -100,6 +102,6 @@ int main()
 		    next_called = true;
 		    return {};
 	    });
-	assert(!chained && !next_called && chained.error().status == HAL_TIMEOUT);
+	assert(!chained && !next_called && chained.error().hal_status == HAL_TIMEOUT);
 	std::puts("PASS: PWM bounds, error propagation, channel ownership, expected short-circuit");
 }

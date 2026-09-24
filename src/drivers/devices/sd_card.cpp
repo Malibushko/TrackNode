@@ -23,18 +23,23 @@ static constexpr uint8_t MAX_ATTEMPTS = 8;
 
 status sd_card::init()
 {
-	auto status = spi_device::init()
-					.and_then([&] { return card_warm_up(); });
-	if (!status)
+	sector_count_ = 0;
+	auto init_status = initialized_ ? ::status{} : spi_device::init();
+	if (init_status)
 	{
-		return status;
+		init_status = bus_.set_baud_rate_prescaler(SPI_BAUDRATEPRESCALER_256)
+		             .and_then([&] { return card_warm_up(); });
+	}
+	if (!init_status)
+	{
+		return init_status;
 	}
 
 	r1_t response;
-	status = go_idle_state(response, MAX_DELAY).and_then([&] { return validate_response(response); });
-	if (!status)
+	init_status = go_idle_state(response, MAX_DELAY).and_then([&] { return validate_response(response); });
+	if (!init_status)
 	{
-		return status;
+		return init_status;
 	}
 
 	if (!response.in_idle_state())
@@ -92,6 +97,8 @@ status sd_card::init()
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::sector_count(uint64_t& o_count)
 {
 	if (sector_count_ == 0)
@@ -121,6 +128,8 @@ status sd_card::sector_count(uint64_t& o_count)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::go_idle_state(r1_t &r1, uint32_t timeout)
 {
 	if (!initialized_)
@@ -136,6 +145,8 @@ status sd_card::go_idle_state(r1_t &r1, uint32_t timeout)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::app_send_op_cond(bool host_capacity_support, r1_t &r1, uint32_t timeout)
 {
@@ -161,6 +172,8 @@ status sd_card::app_send_op_cond(bool host_capacity_support, r1_t &r1, uint32_t 
 				.and_then([&]{ return busy_pause(1); });
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::send_op_cond(r1_t &r1, uint32_t timeout)
 {
 	if (!initialized_)
@@ -170,6 +183,8 @@ status sd_card::send_op_cond(r1_t &r1, uint32_t timeout)
 
 	return fail(component::spi_device, error_code::not_implemented);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::send_if_cond(uint32_t timeout)
 {
@@ -212,6 +227,8 @@ status sd_card::send_if_cond(uint32_t timeout)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::send_csd(std::span<uint8_t, 16> csd, r1_t &r1, uint32_t timeout)
 {
@@ -273,6 +290,8 @@ status sd_card::send_csd(std::span<uint8_t, 16> csd, r1_t &r1, uint32_t timeout)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::send_cid(std::span<uint8_t, 16> cid, r1_t &r1, uint32_t timeout)
 {
 	if (!initialized_)
@@ -282,6 +301,8 @@ status sd_card::send_cid(std::span<uint8_t, 16> cid, r1_t &r1, uint32_t timeout)
 
 	return fail(component::spi_device, error_code::not_implemented);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::stop_transmission(r1_t &r1, uint32_t timeout)
 {
@@ -293,6 +314,8 @@ status sd_card::stop_transmission(r1_t &r1, uint32_t timeout)
 	return fail(component::spi_device, error_code::not_implemented);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::set_blocklen(uint32_t block_length, r1_t &r1, uint32_t timeout)
 {
 	if (!initialized_)
@@ -302,6 +325,8 @@ status sd_card::set_blocklen(uint32_t block_length, r1_t &r1, uint32_t timeout)
 
 	return fail(component::spi_device, error_code::not_implemented);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::read_single_block(uint32_t address, std::span<uint8_t> data, r1_t &r1, uint32_t timeout)
 {
@@ -368,6 +393,8 @@ status sd_card::read_single_block(uint32_t address, std::span<uint8_t> data, r1_
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::read_multiple_block(uint32_t address, std::span<uint8_t> data, r1_t &r1, uint32_t timeout)
 {
 	if (!initialized_)
@@ -377,6 +404,8 @@ status sd_card::read_multiple_block(uint32_t address, std::span<uint8_t> data, r
 
 	return fail(component::spi_device, error_code::not_implemented);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::set_block_count(uint16_t number_of_blocks, r1_t &r1, uint32_t timeout)
 {
@@ -388,6 +417,8 @@ status sd_card::set_block_count(uint16_t number_of_blocks, r1_t &r1, uint32_t ti
 	return fail(component::spi_device, error_code::not_implemented);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::set_wr_block_erase_count(uint32_t number_of_blocks, r1_t &r1, uint32_t timeout)
 {
 	if (!initialized_)
@@ -397,6 +428,8 @@ status sd_card::set_wr_block_erase_count(uint32_t number_of_blocks, r1_t &r1, ui
 
 	return fail(component::spi_device, error_code::not_implemented);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::write_block(uint32_t address, std::span<const uint8_t> data, r1_t &r1, uint32_t timeout)
 {
@@ -466,6 +499,8 @@ status sd_card::write_block(uint32_t address, std::span<const uint8_t> data, r1_
 	return fail(component::spi_device, error_code::timeout_error);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::write_multiple_block(uint32_t address, std::span<const uint8_t> data, r1_t &r1, uint32_t timeout)
 {
 	if (!initialized_)
@@ -475,6 +510,8 @@ status sd_card::write_multiple_block(uint32_t address, std::span<const uint8_t> 
 
 	return fail(component::spi_device, error_code::not_implemented);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::app_cmd(r1_t &r1, uint32_t timeout)
 {
@@ -492,6 +529,8 @@ status sd_card::app_cmd(r1_t &r1, uint32_t timeout)
 	return status;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::read_ocr(r3_t &response, uint32_t timeout)
 {
 	if (!initialized_)
@@ -504,10 +543,14 @@ status sd_card::read_ocr(r3_t &response, uint32_t timeout)
 				.and_then([&] { return validate_response(response.r1); });
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::send_command(uint8_t index, uint32_t crc, uint32_t timeout, r1_t &response)
 {
 	return send_command(index, 0, crc, timeout, response);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::send_command(uint8_t index, uint32_t argument, uint32_t crc, uint32_t timeout, r1_t &response)
 {
@@ -548,6 +591,8 @@ status sd_card::send_command(uint8_t index, uint32_t argument, uint32_t crc, uin
 	return fail(component::spi_device, error_code::device_error);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::send_command(uint8_t index, uint32_t argument, uint32_t crc, uint32_t timeout, r7_t &response)
 {
 	if (auto status = send_command(index, argument, crc, timeout, response.r1); !status)
@@ -567,6 +612,8 @@ status sd_card::send_command(uint8_t index, uint32_t argument, uint32_t crc, uin
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::send_command(uint8_t index, uint32_t crc, uint32_t timeout, r3_t &response)
 {
 	if (auto status = send_command(index, crc, timeout, response.r1); !status)
@@ -585,6 +632,8 @@ status sd_card::send_command(uint8_t index, uint32_t crc, uint32_t timeout, r3_t
 		return {};
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::validate_response(r1_t response) const
 {
@@ -611,6 +660,8 @@ status sd_card::validate_response(r1_t response) const
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status sd_card::card_warm_up()
 {
 	// Set CS=1 and MOSI=1
@@ -618,6 +669,8 @@ status sd_card::card_warm_up()
 	static constexpr uint8_t warmup_ticks = 100;
 	return busy_pause(warmup_ticks);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status sd_card::busy_pause(uint8_t ticks)
 {
@@ -639,3 +692,5 @@ status sd_card::busy_pause(uint8_t ticks)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////

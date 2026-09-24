@@ -10,6 +10,8 @@ spi_device::spi_device(spi_bus &bus, spi_device_config config) :
 
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status spi_device::init()
 {
 	if (initialized_)
@@ -26,6 +28,8 @@ status spi_device::init()
 	initialized_ = status.has_value();
 	return status;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status spi_device::read_registers(uint8_t first_register, std::span<uint8_t> destination, uint32_t timeout)
 {
@@ -48,6 +52,8 @@ status spi_device::read_registers(uint8_t first_register, std::span<uint8_t> des
 	return bus_.receive(destination, timeout);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status spi_device::write_register(uint8_t register_address, uint8_t value, uint32_t timeout)
 {
 	if (!initialized_)
@@ -61,3 +67,5 @@ status spi_device::write_register(uint8_t register_address, uint8_t value, uint3
 	const spi_cs_guard guard(pin_cs);
 	return bus_.transmit(buf, timeout);
 }
+
+//////////////////////////////////////////////////////////////////////////

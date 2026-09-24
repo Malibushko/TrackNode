@@ -3,6 +3,8 @@ extern "C" {
 #include <diskio.h>
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 #include "libs/fatfs/sd_diskio.h"
 #include "drivers/devices/sd_card.h"
 
@@ -12,10 +14,14 @@ constexpr BYTE sd_drive = 0;
 sd_card* card = nullptr;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void bind_sd_card(sd_card& instance)
 {
 	card = &instance;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 void unbind_sd_card(sd_card& instance)
 {
@@ -24,6 +30,8 @@ void unbind_sd_card(sd_card& instance)
 		card = nullptr;
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 extern "C" DSTATUS disk_status(BYTE pdrv)
 {
@@ -34,10 +42,14 @@ extern "C" DSTATUS disk_status(BYTE pdrv)
 	return 0;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" DSTATUS disk_initialize(BYTE pdrv)
 {
 	return disk_status(pdrv);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 extern "C" DRESULT disk_read(BYTE pdrv, BYTE* buffer, LBA_t sector, UINT count)
 {
@@ -67,6 +79,8 @@ extern "C" DRESULT disk_read(BYTE pdrv, BYTE* buffer, LBA_t sector, UINT count)
 	return RES_OK;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" DRESULT disk_write(BYTE pdrv, const BYTE* buffer, LBA_t sector, UINT count)
 {
 	if (pdrv != sd_drive || buffer == nullptr || count == 0)
@@ -93,6 +107,8 @@ extern "C" DRESULT disk_write(BYTE pdrv, const BYTE* buffer, LBA_t sector, UINT 
 
 	return RES_OK;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 extern "C" DRESULT disk_ioctl(BYTE pdrv, BYTE command, void* buffer)
 {
@@ -157,3 +173,5 @@ extern "C" DRESULT disk_ioctl(BYTE pdrv, BYTE command, void* buffer)
 
 	return RES_OK;
 }
+
+//////////////////////////////////////////////////////////////////////////

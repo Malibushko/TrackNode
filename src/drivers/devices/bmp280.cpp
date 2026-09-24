@@ -1,6 +1,7 @@
 #include "drivers/devices/bmp280.h"
 
 #include "common/common.h"
+#include "common/scope_guard.h"
 
 #include <array>
 #include <sys/types.h>
@@ -25,6 +26,8 @@ const uint32_t RW_TIMEOUT_DELAY = 100;
 
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status bmp280::init()
 {
 	if (attempted_)
@@ -38,6 +41,7 @@ status bmp280::init()
 	}
 
 	attempted_ = true;
+	common::scope_guard retry_on_failure([this] { attempted_ = false; });
 
 	// config register (0xF5): [t_sb(3) | filter(3) | reserved(1) | spi3w_en(1)]
 	const uint8_t config_reg =
@@ -116,14 +120,21 @@ status bmp280::init()
 		common::delay(1);
 	}
 
-	return i2c_transport.write_register(static_cast<uint8_t>(reg::config), config_reg, RW_TIMEOUT_DELAY)
+	auto configured = i2c_transport.write_register(static_cast<uint8_t>(reg::config), config_reg, RW_TIMEOUT_DELAY)
 	    .and_then(
 	        [&]() -> status
 	        {
 		        return i2c_transport.write_register(static_cast<uint8_t>(reg::ctrl_meas), ctrl_meas_reg,
 		                                            RW_TIMEOUT_DELAY);
 	        });
+	if (configured)
+	{
+		retry_on_failure.release();
+	}
+	return configured;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status bmp280::start_measurement()
 {
@@ -152,6 +163,8 @@ status bmp280::start_measurement()
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 result<bool> bmp280::is_measuring()
 {
 	i2c_device &i2c_transport = transport_;
@@ -164,6 +177,8 @@ result<bool> bmp280::is_measuring()
 
 	return statusValue & (1 << 3);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 result<bmp280::environmental_sample> bmp280::read_measurement()
 {
@@ -191,10 +206,14 @@ result<bmp280::environmental_sample> bmp280::read_measurement()
 	return sample;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 component bmp280::get_component_type() const
 {
 	return component::i2c_device;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 //
 // Taken from datasheet
@@ -213,6 +232,8 @@ int32_t bmp280::compensate_temperature(int32_t adc_t)
 	t = (t_fine_ * 5 + 128) >> 8;
 	return t;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 uint32_t bmp280::compensate_pressure(int32_t adc_p)
 {
@@ -237,3 +258,5 @@ uint32_t bmp280::compensate_pressure(int32_t adc_p)
 	p = ((p + var1 + var2) >> 8) + (static_cast<int64_t>(calib_.dig_p7) << 4);
 	return static_cast<uint32_t>(p);
 }
+
+//////////////////////////////////////////////////////////////////////////

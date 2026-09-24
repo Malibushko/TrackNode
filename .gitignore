@@ -1,2 +1,3 @@
 .pio
+/build/
 /renode/stm32f103.generated.resc

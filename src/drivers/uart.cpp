@@ -1,8 +1,5 @@
 #include "drivers/uart.h"
 
-#include "common/scope_guard.h"
-#include "platform/stdio.h"
-
 #include <algorithm>
 
 namespace
@@ -28,6 +25,8 @@ void bind_instance(USART_TypeDef *periph, uart *obj)
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 uart *get_instance(USART_TypeDef *periph)
 {
 	if (periph == USART1)
@@ -46,6 +45,8 @@ uart *get_instance(USART_TypeDef *periph)
 	return nullptr;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 IRQn_Type irq_for(USART_TypeDef *instance)
 {
 	if (instance == USART1)
@@ -57,6 +58,8 @@ IRQn_Type irq_for(USART_TypeDef *instance)
 
 	return static_cast<IRQn_Type>(-1);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 struct dma_line
 {
@@ -79,6 +82,8 @@ dma_line rx_dma_for(USART_TypeDef *instance)
 	return { nullptr, 0, static_cast<IRQn_Type>(-1) };
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 dma_line tx_dma_for(USART_TypeDef *instance)
 {
 	if (instance == USART1)
@@ -93,6 +98,8 @@ dma_line tx_dma_for(USART_TypeDef *instance)
 	return { nullptr, 0, static_cast<IRQn_Type>(-1) };
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void enable_dma_clock(DMA_Stream_TypeDef *stream)
 {
 	if (stream == DMA1_Stream0 || stream == DMA1_Stream1 || stream == DMA1_Stream2 ||
@@ -106,6 +113,8 @@ void enable_dma_clock(DMA_Stream_TypeDef *stream)
 		__HAL_RCC_DMA2_CLK_ENABLE();
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 //
 // DMA structs
@@ -128,6 +137,8 @@ void bind_dma(DMA_Stream_TypeDef *stream, DMA_HandleTypeDef *handle)
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 DMA_HandleTypeDef *get_dma_handle(DMA_Stream_TypeDef *stream)
 {
 	for (auto &b : dma_bindings)
@@ -139,12 +150,16 @@ DMA_HandleTypeDef *get_dma_handle(DMA_Stream_TypeDef *stream)
 	return nullptr;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 } // anonymous namespace
 
 uart::uart(uart_config config) : config_(config)
 {
 	bind_instance(config_.instance, this);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status uart::init()
 {
@@ -252,7 +267,22 @@ status uart::init()
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status uart::write(const uint8_t *data, size_t size, uint32_t timeout_ms)
+{
+	auto started = begin_write(data, size);
+	if (!started || size == 0)
+	{
+		return started;
+	}
+	(void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(timeout_ms));
+	return finish_write();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status uart::begin_write(const uint8_t *data, size_t size)
 {
 	if (!initialized_)
 	{
@@ -268,32 +298,42 @@ status uart::write(const uint8_t *data, size_t size, uint32_t timeout_ms)
 	{
 		return {};
 	}
+	if (tx_state_.load() == tx_state::transmitting)
+	{
+		return fail(component::uart, error_code::device_error);
+	}
 
 	ulTaskNotifyTake(pdTRUE, 0);
 
 	tx_waiter_ = xTaskGetCurrentTaskHandle();
 	tx_state_.store(tx_state::transmitting);
 
-	common::scope_guard release_guard([this]
+	if (auto status = from_hal(component::uart, HAL_UART_Transmit_DMA(&handle_, data, size)); !status)
 	{
 		tx_state_.store(tx_state::idle);
 		tx_waiter_ = nullptr;
-	});
-
-	if (auto status = from_hal(component::uart, HAL_UART_Transmit_DMA(&handle_, data, size)); !status)
-	{
 		return status;
 	}
+	return {};
+}
 
-	if (!ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(timeout_ms)))
+//////////////////////////////////////////////////////////////////////////
+
+status uart::finish_write()
+{
+	const auto state = tx_state_.exchange(tx_state::idle);
+	tx_waiter_ = nullptr;
+	if (state == tx_state::transmitting || state == tx_state::failed)
 	{
 		HAL_UART_AbortTransmit(&handle_);
-		return fail(component::uart, error_code::timeout_error);
+		return fail(component::uart, state == tx_state::transmitting
+		                             ? error_code::timeout_error : error_code::device_error);
 	}
-
-	auto state = tx_state_.load();
-	return state == tx_state::failed ? fail(component::uart, error_code::device_error) : status{};
+	return state == tx_state::completed ? status{}
+	                                    : fail(component::uart, error_code::device_error);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status uart::setup_dma(bool is_rx)
 {
@@ -341,6 +381,8 @@ status uart::setup_dma(bool is_rx)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status uart::start_rx_dma()
 {
 	last_read_pos_ = 0;
@@ -348,6 +390,8 @@ status uart::start_rx_dma()
 		component::uart,
 		HAL_UARTEx_ReceiveToIdle_DMA(&handle_, rx_dma_buf_.data(), rx_dma_buf_.size()));
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 void uart::on_rx_event(size_t write_pos, BaseType_t *higher_priority_woken)
 {
@@ -364,6 +408,8 @@ void uart::on_rx_event(size_t write_pos, BaseType_t *higher_priority_woken)
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void uart::on_tx_event(BaseType_t *higher_priority_woken)
 {
 	if (tx_state_.load() != tx_state::transmitting)
@@ -378,6 +424,8 @@ void uart::on_tx_event(BaseType_t *higher_priority_woken)
 		vTaskNotifyGiveFromISR(tx_waiter_, higher_priority_woken);
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 void uart::on_error(BaseType_t* higher_priority_woken)
 {
@@ -403,6 +451,8 @@ void uart::on_error(BaseType_t* higher_priority_woken)
 		}
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 void uart::drain_rx(size_t write_pos, BaseType_t *higher_priority_woken)
 {
@@ -442,12 +492,16 @@ void uart::drain_rx(size_t write_pos, BaseType_t *higher_priority_woken)
 	last_read_pos_ = write_pos;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status uart::error()
 {
 	auto temp = last_error_;
 	last_error_ = {};
 	return temp;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status uart::enable_irq()
 {
@@ -462,15 +516,21 @@ status uart::enable_irq()
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 size_t uart::available() const
 {
 	return rx_stream_buf_ ? xStreamBufferBytesAvailable(rx_stream_buf_) : 0;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 uint32_t uart::dropped_count() const
 {
 	return dropped_count_.load(std::memory_order_relaxed);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 result<size_t> uart::read(uint8_t *data, size_t size, uint32_t timeout_ms)
 {
@@ -490,6 +550,8 @@ result<size_t> uart::read(uint8_t *data, size_t size, uint32_t timeout_ms)
 	return bytes_read;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 //
 // UART HAL Callbacks
 //
@@ -508,6 +570,8 @@ extern "C" void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t s
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if (auto *obj = get_instance(huart->Instance))
@@ -522,6 +586,8 @@ extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 //
 // HAL UART Callbacks
 //
@@ -534,6 +600,8 @@ extern "C" void USART1_IRQHandler(void)
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" void USART2_IRQHandler(void)
 {
 	if (instance_usart2)
@@ -542,6 +610,8 @@ extern "C" void USART2_IRQHandler(void)
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" void USART6_IRQHandler(void)
 {
 	if (instance_usart6)
@@ -549,6 +619,8 @@ extern "C" void USART6_IRQHandler(void)
 		HAL_UART_IRQHandler(&instance_usart6->handle());
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 //
 // DMA UART Callbacks
@@ -565,11 +637,15 @@ extern "C" void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" void DMA1_Stream5_IRQHandler(void)
 {
 	if (auto *h = get_dma_handle(DMA1_Stream5))
 		HAL_DMA_IRQHandler(h);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 extern "C" void DMA1_Stream6_IRQHandler(void)
 {
@@ -577,11 +653,15 @@ extern "C" void DMA1_Stream6_IRQHandler(void)
 		HAL_DMA_IRQHandler(h);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" void DMA2_Stream1_IRQHandler(void)
 {
 	if (auto *h = get_dma_handle(DMA2_Stream1))
 		HAL_DMA_IRQHandler(h);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 extern "C" void DMA2_Stream5_IRQHandler(void)
 {
@@ -589,14 +669,20 @@ extern "C" void DMA2_Stream5_IRQHandler(void)
 		HAL_DMA_IRQHandler(h);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" void DMA2_Stream6_IRQHandler(void)
 {
 	if (auto *h = get_dma_handle(DMA2_Stream6))
 		HAL_DMA_IRQHandler(h);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 extern "C" void DMA2_Stream7_IRQHandler(void)
 {
 	if (auto *h = get_dma_handle(DMA2_Stream7))
 		HAL_DMA_IRQHandler(h);
 }
+
+//////////////////////////////////////////////////////////////////////////

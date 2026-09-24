@@ -1,0 +1,8 @@
+add_subdirectory(application)
+add_subdirectory(board)
+add_subdirectory(common)
+add_subdirectory(composition)
+add_subdirectory(drivers)
+add_subdirectory(infrastructure)
+add_subdirectory(libs)
+add_subdirectory(platform)

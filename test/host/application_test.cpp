@@ -1,5 +1,5 @@
-#include "app/status_indicator.h"
-#include "board/track_node_control_protocol.h"
+#include "infrastructure/status_indicator.h"
+#include "infrastructure/track_node_control_protocol.h"
 #include <cassert>
 #include <cstdio>
 #include <vector>
@@ -61,27 +61,18 @@ int main()
 
 	input stream;
 	track_node_control_protocol protocol{ stream };
-	stream.bytes.assign(100, 'x');
-	assert(!protocol.consume(32));
-	assert(stream.position == 32);
-	stream.bytes.clear();
-	stream.position = 0;
-	for (int i = 0; i < 20; ++i)
-	{
-		stream.bytes.push_back('b');
-		stream.bytes.push_back('0');
-	}
-	assert(protocol.consume(32));
-	assert(stream.position == 16);
-	assert(!protocol.consume(32));
-	assert(stream.position == 16);
-	for (int i = 0; i < 8; ++i)
-	{
-		assert(protocol.available());
-		assert(protocol.read() == command::blink_once);
-	}
+	stream.bytes = { 'x', 'p', 't', 'c', 'l' };
+	assert(!protocol.process_next_byte());
 	assert(!protocol.available());
-	assert(protocol.consume(2));
-	assert(protocol.read() == command::blink_once);
-	std::puts("PASS: blink sequence, wraparound, error priority, GPIO failure, parser budget/capacity/resume");
+	assert(protocol.process_next_byte());
+	assert(protocol.process_next_byte());
+	assert(protocol.process_next_byte());
+	assert(protocol.process_next_byte());
+	assert(stream.position == stream.bytes.size());
+	assert(protocol.read() == command::ping);
+	assert(protocol.read() == command::read_temperature);
+	assert(protocol.read() == command::read_pressure);
+	assert(protocol.read() == command::read_log);
+	assert(!protocol.available());
+	std::puts("PASS: blink sequence, wraparound, error priority, GPIO failure, command decoding");
 }

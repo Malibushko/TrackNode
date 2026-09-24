@@ -67,6 +67,8 @@ status gpio::init()
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 result<bool> gpio::read() const
 {
 	if (!initialized_)
@@ -81,6 +83,8 @@ result<bool> gpio::read() const
 
 	return HAL_GPIO_ReadPin(config_.pin.port, config_.pin.mask) == GPIO_PIN_SET;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status gpio::write(state signal)
 {
@@ -104,6 +108,8 @@ status gpio::write(state signal)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status gpio::toggle()
 {
 	if (!initialized_)
@@ -120,3 +126,5 @@ status gpio::toggle()
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////

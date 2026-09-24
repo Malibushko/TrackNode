@@ -36,6 +36,7 @@ enum class error_code
 	uart_error,
 	hal_failure,
 	out_of_memory,
+	queue_full,
 	os_failure,
 	invalid_argument,
 	timeout_error,

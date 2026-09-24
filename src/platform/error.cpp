@@ -6,32 +6,6 @@
 #define SCB_MMFAR  (*(volatile uint32_t*)0xE000ED34)
 #define SCB_BFAR   (*(volatile uint32_t*)0xE000ED38)
 
-void error_handler(error_code error_code)
-{
-	switch (error_code)
-	{
-		case error_code::invalid_config:
-		case error_code::not_initialized:
-		case error_code::already_initialized:
-		{
-			g_state = program_state::initialization_error;
-			break;
-		}
-
-		case error_code::hal_failure:
-		{
-			g_state = program_state::hal_error;
-			break;
-		}
-
-		default:
-		{
-			g_state = program_state::runtime_error;
-			break;
-		}
-	}
-}
-
 void panic()
 {
 	__disable_irq();
@@ -41,6 +15,8 @@ void panic()
 		// Empty
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 extern "C" void HardFault_Handler(void)
 {
@@ -53,6 +29,8 @@ extern "C" void HardFault_Handler(void)
 		"b HardFault_Handler_C     \n"
 	);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 extern "C" void HardFault_Handler_C(uint32_t *stack)
 {
@@ -78,3 +56,5 @@ extern "C" void HardFault_Handler_C(uint32_t *stack)
 
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////

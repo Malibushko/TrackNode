@@ -1,14 +1,7 @@
 #pragma once
 
+#include "application/command.h"
 #include "common/command_protocol.h"
-
-enum class command
-{
-	ping,
-	read_temperature,
-	read_pressure,
-	read_log
-};
 
 template<ByteInput Input>
 class track_node_control_protocol : public command_protocol<Input, command, track_node_control_protocol<Input>>

@@ -60,6 +60,8 @@ status timer::init()
 	return operation_status;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status timer::start()
 {
 	if (!initialized_)
@@ -69,6 +71,8 @@ status timer::start()
 
 	return from_hal(component::timer, HAL_TIM_Base_Start(&handle_));
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status timer::stop()
 {
@@ -85,6 +89,8 @@ status timer::stop()
 	return from_hal(component::timer, HAL_TIM_Base_Stop(&handle_));
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 result<uint32_t> timer::counter() const
 {
 	if (!initialized_)
@@ -94,3 +100,5 @@ result<uint32_t> timer::counter() const
 
 	return handle_.Instance->CNT;
 }
+
+//////////////////////////////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "drivers/gpio.h"
-#include "platform/error.h"
+#include "infrastructure/service_status.h"
 
 class status_indicator
 {

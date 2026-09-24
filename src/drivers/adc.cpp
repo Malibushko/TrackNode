@@ -55,6 +55,8 @@ status adc::init()
 	return status;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 result<uint16_t> adc::read_raw(uint32_t timeout_ms)
 {
 	if (!initialized_)
@@ -85,3 +87,5 @@ result<uint16_t> adc::read_raw(uint32_t timeout_ms)
 
 	return value;
 }
+
+//////////////////////////////////////////////////////////////////////////

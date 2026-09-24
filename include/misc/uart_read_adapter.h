@@ -23,6 +23,10 @@ public:
 		{
 			error_ = error{ component::uart, error_code::uart_error };
 		}
+		else
+		{
+			error_.reset();
+		}
 
 		return data;
 	}

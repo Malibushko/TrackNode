@@ -29,6 +29,8 @@ bool enable_spi_clock(const SPI_TypeDef *instance)
     return false;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 std::optional<uint32_t> spi_alternate_function(const SPI_TypeDef *instance)
 {
     if (instance == SPI1)
@@ -49,6 +51,8 @@ std::optional<uint32_t> spi_alternate_function(const SPI_TypeDef *instance)
 #endif
     return std::nullopt;
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 }  // namespace
 
@@ -115,6 +119,8 @@ status spi_bus::init()
     return result;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status spi_bus::transmit(std::span<const uint8_t> data, uint32_t timeout)
 {
     if (const status s = validate_transfer(data.size()); !s) {
@@ -124,6 +130,8 @@ status spi_bus::transmit(std::span<const uint8_t> data, uint32_t timeout)
     return from_hal(component::spi_bus, HAL_SPI_Transmit(&spi_handle, const_cast<uint8_t *>(data.data()), static_cast<uint16_t>(data.size()), timeout));
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status spi_bus::receive(std::span<uint8_t> data, uint32_t timeout)
 {
     if (const status s = validate_transfer(data.size()); !s) {
@@ -131,6 +139,8 @@ status spi_bus::receive(std::span<uint8_t> data, uint32_t timeout)
     }
     return from_hal(component::spi_bus, HAL_SPI_Receive(&spi_handle, data.data(), static_cast<uint16_t>(data.size()), timeout));
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status spi_bus::transmit_receive(std::span<const uint8_t> tx, std::span<uint8_t> rx, uint32_t timeout)
 {
@@ -144,6 +154,8 @@ status spi_bus::transmit_receive(std::span<const uint8_t> tx, std::span<uint8_t>
 
     return from_hal(component::spi_bus, HAL_SPI_TransmitReceive(&spi_handle, const_cast<uint8_t *>(tx.data()), rx.data(), static_cast<uint16_t>(tx.size()), timeout));
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status spi_bus::set_baud_rate_prescaler(uint32_t prescaler)
 {
@@ -160,6 +172,8 @@ status spi_bus::set_baud_rate_prescaler(uint32_t prescaler)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status spi_bus::validate_transfer(std::size_t size) const
 {
     if (!initialized_) {
@@ -172,3 +186,5 @@ status spi_bus::validate_transfer(std::size_t size) const
 
     return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
