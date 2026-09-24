@@ -56,6 +56,10 @@ status watchdog::init()
 	handle_.Init.Prescaler = config_.prescaler;
 	handle_.Init.Reload = config_.reload;
 
+#if defined(TRACK_NODE_DEBUG)
+	__HAL_DBGMCU_FREEZE_IWDG();
+#endif
+
 	auto status = from_hal(component::watchdog, HAL_IWDG_Init(&handle_));
 
 	initialized_ = status.has_value();
