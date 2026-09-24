@@ -32,7 +32,7 @@ AllowShortCaseLabelsOnASingleLine: false
 AllowShortCaseExpressionOnASingleLine: false
 AllowShortCompoundRequirementOnASingleLine: false
 CompactNamespaces: false
-IndentCaseLabels: false
+IndentCaseLabels: true
 AccessModifierOffset: -4
 NamespaceIndentation: None
 AllowShortFunctionsOnASingleLine: None

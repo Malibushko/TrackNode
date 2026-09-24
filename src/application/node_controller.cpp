@@ -105,21 +105,28 @@ void node_controller::run()
 
 //////////////////////////////////////////////////////////////////////////
 
+status node_controller::init_sensor()
+{
+	auto started = sensor_.init();
+	if (!started)
+	{
+		last_sample_.valid = false;
+		monitor_.report(service_id::sensor, started.error(), service_health::degraded);
+		monitor_.progress(service_id::sensor, xTaskGetTickCount());
+		(void)logger_.write("Sensor init failed: %u\r\n", static_cast<unsigned>(started.error().code));
+		return started;
+	}
+	sensor_initialized_ = true;
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+///
 void node_controller::take_sample()
 {
-	if (!sensor_initialized_)
+	if (!sensor_initialized_ && !init_sensor())
 	{
-		auto started = sensor_.init();
-		if (!started)
-		{
-			last_sample_.valid = false;
-			monitor_.report(service_id::sensor, started.error(), service_health::degraded);
-			monitor_.progress(service_id::sensor, xTaskGetTickCount());
-			(void)logger_.write("Sensor init failed: %u\r\n",
-			                    static_cast<unsigned>(started.error().code));
-			return;
-		}
-		sensor_initialized_ = true;
+		return;
 	}
 
 	const auto measurement = sensor_.read();
@@ -133,6 +140,7 @@ void node_controller::take_sample()
 		    .pressure_pa = measurement->pressure_pa,
 		    .valid = true,
 		};
+
 		if (auto record = format_sample_csv(last_sample_))
 		{
 			monitor_.set_health(service_id::sensor, service_health::ready);
@@ -161,66 +169,106 @@ void node_controller::handle_command(command value)
 {
 	switch (value)
 	{
-	case command::ping:
-		if (auto accepted = indicator_.ping(); !accepted)
-		{
-			(void)logger_.write("Indicator queue full\r\n");
-		}
-		break;
-
-	case command::read_temperature:
-	case command::read_pressure:
-	{
-		if (!last_sample_.valid)
-		{
-			if (last_sample_.sequence == 0)
-			{
-				(void)logger_.write("Sensor sample unavailable (no measurement)\r\n");
-			}
-			else
-			{
-				const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_.timestamp);
-				(void)logger_.write("Sensor sample invalid (last age=%lu ms, seq=%lu)\r\n",
-				                    static_cast<unsigned long>(age),
-				                    static_cast<unsigned long>(last_sample_.sequence));
-			}
+		case command::ping:
+			handle_ping();
 			break;
-		}
+
+		case command::read_temperature:
+			handle_read_temperature();
+			break;
+
+		case command::read_pressure:
+			handle_read_pressure();
+			break;
+
+		case command::read_log:
+			handle_read_log();
+			break;
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_ping()
+{
+	if (auto accepted = indicator_.ping(); !accepted)
+	{
+		(void)logger_.write("Indicator queue full\r\n");
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+bool node_controller::ensure_sample_available()
+{
+	if (last_sample_.valid)
+	{
+		return true;
+	}
+
+	if (last_sample_.sequence == 0)
+	{
+		(void)logger_.write("Sensor sample unavailable (no measurement)\r\n");
+	}
+	else
+	{
 		const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_.timestamp);
-		if (value == command::read_temperature)
-		{
-			(void)logger_.write("Temperature = %.2f C (age=%lu ms, seq=%lu)\r\n",
-			                    static_cast<double>(last_sample_.temperature_c),
-			                    static_cast<unsigned long>(age),
-			                    static_cast<unsigned long>(last_sample_.sequence));
-		}
-		else
-		{
-			(void)logger_.write("Pressure = %.2f Pa (age=%lu ms, seq=%lu)\r\n",
-			                    static_cast<double>(last_sample_.pressure_pa),
-			                    static_cast<unsigned long>(age),
-			                    static_cast<unsigned long>(last_sample_.sequence));
-		}
-		break;
+		(void)logger_.write("Sensor sample invalid (last age=%lu ms, seq=%lu)\r\n",
+		                    static_cast<unsigned long>(age),
+		                    static_cast<unsigned long>(last_sample_.sequence));
+	}
+	return false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_read_temperature()
+{
+	if (!ensure_sample_available())
+	{
+		return;
 	}
 
-	case command::read_log:
+	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_.timestamp);
+	(void)logger_.write("Temperature = %.2f C (age=%lu ms, seq=%lu)\r\n",
+	                    static_cast<double>(last_sample_.temperature_c),
+	                    static_cast<unsigned long>(age),
+	                    static_cast<unsigned long>(last_sample_.sequence));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_read_pressure()
+{
+	if (!ensure_sample_available())
 	{
-		const auto log = storage_.snapshot();
-		if (log.health != service_health::ready)
-		{
-			(void)logger_.write("Storage unavailable (dropped=%lu)\r\n",
-			                    static_cast<unsigned long>(log.dropped_samples));
-			break;
-		}
-		const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - log.observed_at);
-		(void)logger_.write("Log size: %llu bytes (age=%lu ms, dropped=%lu)\r\n",
-		                    static_cast<unsigned long long>(log.log_size),
-		                    static_cast<unsigned long>(age),
+		return;
+	}
+
+	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_.timestamp);
+	(void)logger_.write("Pressure = %.2f Pa (age=%lu ms, seq=%lu)\r\n",
+	                    static_cast<double>(last_sample_.pressure_pa),
+	                    static_cast<unsigned long>(age),
+	                    static_cast<unsigned long>(last_sample_.sequence));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_read_log()
+{
+	const auto log = storage_.snapshot();
+	if (log.health != service_health::ready)
+	{
+		(void)logger_.write("Storage unavailable (dropped=%lu)\r\n",
 		                    static_cast<unsigned long>(log.dropped_samples));
-		break;
+		return;
 	}
-	}
+
+	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - log.observed_at);
+	(void)logger_.write("Log size: %llu bytes (age=%lu ms, dropped=%lu)\r\n",
+	                    static_cast<unsigned long long>(log.log_size),
+	                    static_cast<unsigned long>(age),
+	                    static_cast<unsigned long>(log.dropped_samples));
 }
 
 //////////////////////////////////////////////////////////////////////////

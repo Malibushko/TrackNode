@@ -10,14 +10,14 @@ constexpr uint32_t divider(uint32_t prescaler)
 {
 	switch (prescaler)
 	{
-	case IWDG_PRESCALER_4:   return 4;
-	case IWDG_PRESCALER_8:   return 8;
-	case IWDG_PRESCALER_16:  return 16;
-	case IWDG_PRESCALER_32:  return 32;
-	case IWDG_PRESCALER_64:  return 64;
-	case IWDG_PRESCALER_128: return 128;
-	case IWDG_PRESCALER_256: return 256;
-	default:                 return 0;
+		case IWDG_PRESCALER_4:   return 4;
+		case IWDG_PRESCALER_8:   return 8;
+		case IWDG_PRESCALER_16:  return 16;
+		case IWDG_PRESCALER_32:  return 32;
+		case IWDG_PRESCALER_64:  return 64;
+		case IWDG_PRESCALER_128: return 128;
+		case IWDG_PRESCALER_256: return 256;
+		default:                 return 0;
 	}
 }
 

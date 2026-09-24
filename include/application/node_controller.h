@@ -27,10 +27,16 @@ public: // Application API
 private: // Common task loop
 	static void task_entry(void *argument);
 	void run();
+	status init_sensor();
 
 private: // Application behavior
 	void take_sample();
 	void handle_command(command value);
+	void handle_ping();
+	void handle_read_temperature();
+	void handle_read_pressure();
+	void handle_read_log();
+	bool ensure_sample_available();
 
 private: // State
 	sensor_service &sensor_;
