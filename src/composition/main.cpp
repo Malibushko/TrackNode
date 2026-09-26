@@ -1,6 +1,7 @@
 #include "composition/track_node.h"
 #include "board/clock.h"
 #include "core/component_list.h"
+#include "drivers/devices/neo6m.h"
 #include "platform/error.h"
 
 int main()
@@ -42,6 +43,16 @@ int main()
 	    .prescaler = IWDG_PRESCALER_128,
 	    .reload = 0x3FF,
 	} };
+	static uart gps_transport = uart{ uart_config{
+		.instance = USART2,
+		.tx = { GPIOA, GPIO_PIN_2 },
+		.rx = { GPIOA, GPIO_PIN_3 },
+		.alternate = GPIO_AF7_USART2,
+		.baud_rate = 9600,
+		.mode = UART_MODE_RX,
+	} };
+
+	static neo6m gps_module { gps_transport };
 
 	static component_list devices;
 	auto registered = devices.add("console", console, component_startup::initialize)
@@ -50,7 +61,9 @@ int main()
 	    .and_then([&]() -> status { return devices.add("sensor", sensor, component_startup::defer); })
 	    .and_then([&]() -> status { return devices.add("storage_bus", storage_bus, component_startup::initialize); })
 	    .and_then([&]() -> status { return devices.add("storage", storage, component_startup::defer); })
-	    .and_then([&]() -> status { return devices.add("watchdog", watchdog_device, component_startup::defer); });
+	    .and_then([&]() -> status { return devices.add("watchdog", watchdog_device, component_startup::defer); })
+		.and_then([&]() -> status { return devices.add("gps_transport", gps_transport, component_startup::initialize); })
+	    .and_then([&]() -> status { return devices.add("gps", gps_module, component_startup::defer); });
 	if (!registered)
 	{
 		panic();
@@ -65,8 +78,7 @@ int main()
 		panic();
 	}
 
-	static track_node application{ devices, *console_device, *sensor_device,
-	                               *storage_device, *watchdog };
+	static track_node application{ devices, *console_device, *sensor_device, *storage_device, gps_module, *watchdog };
 	if (auto started = application.init(); !started && !application.can_signal_error())
 	{
 		panic();

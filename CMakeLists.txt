@@ -22,7 +22,13 @@ if(CMAKE_CROSSCOMPILING)
 
     add_executable(${TRACK_NODE_TARGET}
             include/fault/fault_injection.h
-            include/perf.h)
+            include/perf.h
+            include/drivers/devices/neo6m.h
+            include/drivers/protocols/nmea0183.h
+            include/drivers/protocols/nmea0183_types.h
+            src/drivers/protocols/nmea0183.cpp
+            src/drivers/devices/neo6m.cpp
+            include/infrastructure/gnss_service.h)
     add_subdirectory(src)
     include(cmake/stm32cube_sources.cmake)
     include(cmake/vendor_sources.cmake)

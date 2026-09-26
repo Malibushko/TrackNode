@@ -9,14 +9,16 @@
 #include "infrastructure/supervisor.h"
 #include "core/component_list.h"
 #include "core/hardware_object.h"
+#include "infrastructure/gnss_service.h"
 
 class track_node : public hardware_object
 {
 public:
 	track_node(component_list &devices, uart &console, bmp280 &sensor,
-	           sd_card &storage, watchdog &watchdog_device);
+	           sd_card &storage, neo6m& gps, watchdog &watchdog_device);
 
 public: // Application lifecycle
+	track_node(component_list &devices, uart &console, bmp280 &sensor, sd_card &storage, watchdog &watchdog_device);
 	status init();
 	[[noreturn]] void launch();
 
@@ -46,6 +48,7 @@ private:
 	storage_service storage_;
 	sensor_service sensor_;
 	indicator_service indicator_;
+	gnss_service gnss_;
 	node_controller controller_;
 	console_service console_;
 	bool attempted_ = false;

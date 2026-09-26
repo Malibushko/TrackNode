@@ -3,16 +3,17 @@
 #include "common/common.h"
 
 track_node::track_node(component_list &devices, uart &console, bmp280 &sensor,
-                       sd_card &storage, watchdog &watchdog_device)
-    : devices_(devices),
-      supervisor_(watchdog_device),
-      logger_(console, supervisor_),
-      storage_(storage, storage_service::file_config{ "logs", sample_csv_header },
-               logger_, supervisor_),
-      sensor_(sensor),
-      indicator_(logger_, supervisor_),
-      controller_(sensor_, storage_, indicator_, logger_, supervisor_),
-      console_(console, controller_, logger_, supervisor_)
+                       sd_card &storage, neo6m& gps, watchdog &watchdog_device)
+	: devices_(devices),
+	  supervisor_(watchdog_device),
+	  logger_(console, supervisor_),
+	  storage_(storage, storage_service::file_config{ "logs", sample_csv_header },
+	           logger_, supervisor_),
+	  sensor_(sensor),
+	  indicator_(logger_, supervisor_),
+	  gnss_(gps, logger_, supervisor_),
+	  controller_(sensor_, storage_, indicator_, logger_, supervisor_),
+	  console_(console, controller_, logger_, supervisor_)
 {
 }
 
@@ -84,6 +85,7 @@ status track_node::startup()
 	              .and_then([&]() -> status { return indicator_.start(); })
 	              .and_then([&]() -> status { return controller_.start(); })
 	              .and_then([&]() -> status { return console_.start(); })
+	              .and_then([&]() -> status { return gnss_.start(); })
 	              .and_then([&]() -> status { return supervisor_.start(); });
 	if (!started)
 	{
@@ -101,6 +103,7 @@ void track_node::stop_workers()
 	controller_.stop();
 	indicator_.stop();
 	storage_.stop();
+	gnss_.stop();
 	logger_.stop();
 }
 

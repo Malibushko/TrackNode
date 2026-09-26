@@ -18,7 +18,7 @@ enum class component_startup
 class component_list
 {
 public:
-	static constexpr std::size_t capacity = 8;
+	static constexpr std::size_t capacity = 9;
 	component_list() = default;
 	component_list(const component_list &) = delete;
 	component_list &operator=(const component_list &) = delete;

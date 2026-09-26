@@ -25,7 +25,9 @@ enum class component
 	spi_bus,
 	spi_device,
 	storage,
-	watchdog
+	watchdog,
+	uart_device,
+	service
 };
 
 enum class error_code
@@ -42,7 +44,8 @@ enum class error_code
 	invalid_argument,
 	timeout_error,
 	not_implemented,
-	storage_error
+	storage_error,
+	not_ready,
 };
 
 struct error

@@ -7,4 +7,5 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     sensor_service.cpp
     storage_service.cpp
     supervisor.cpp
+    gnss_service.cpp
 )

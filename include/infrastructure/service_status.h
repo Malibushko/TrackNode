@@ -21,6 +21,7 @@ enum class service_id : std::uint8_t
 	logger,
 	indicator,
 	watchdog,
+	gnss,
 	count
 };
 
