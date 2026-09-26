@@ -8,6 +8,7 @@ enum class command_type : std::uint8_t
 	ping,
 	read_temperature,
 	read_pressure,
+	read_gnss,
 	read_log,
 	set_sample_period,
 	reset_storage_prepare,

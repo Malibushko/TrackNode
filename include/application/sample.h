@@ -6,6 +6,8 @@
 #include <ctime>
 #include <optional>
 
+inline constexpr std::uint32_t gnss_freshness_limit_ms = 5000;
+
 struct sensor_sample
 {
 	TickType_t timestamp = 0;

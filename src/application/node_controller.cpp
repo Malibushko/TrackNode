@@ -226,6 +226,10 @@ void node_controller::handle_command(command value)
 			handle_read_pressure();
 			break;
 
+		case command_type::read_gnss:
+			handle_read_gnss();
+			break;
+
 		case command_type::read_log:
 			handle_read_log();
 			break;
@@ -305,6 +309,59 @@ void node_controller::handle_read_pressure()
 	                    static_cast<double>(last_sample_->pressure_pa),
 	                    static_cast<unsigned long>(age),
 	                    static_cast<unsigned long>(last_sample_->sequence));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_read_gnss()
+{
+	const auto latest = gnss_.read();
+	if (!latest)
+	{
+		(void)logger_.write("GNSS snapshot unavailable\r\n");
+		return;
+	}
+
+	char sequence[21]{};
+	const auto converted = std::to_chars(sequence, sequence + sizeof(sequence) - 1,
+	                                     latest->sequence);
+	if (converted.ec != std::errc{})
+	{
+		(void)logger_.write("ERR GNSS_FORMAT\r\n");
+		return;
+	}
+	*converted.ptr = '\0';
+
+	const auto age_ms = pdTICKS_TO_MS(xTaskGetTickCount() - latest->received_at);
+	const bool fresh = age_ms <= gnss_freshness_limit_ms;
+	const bool position_valid = fresh && latest->position_valid;
+	const bool speed_valid = fresh && latest->speed_valid;
+	const bool time_valid = fresh && latest->time_valid;
+	(void)logger_.write("GNSS seq=%s age=%lu ms pos=%u speed=%u time_field=%u\r\n",
+	                    sequence, static_cast<unsigned long>(age_ms),
+	                    static_cast<unsigned>(position_valid),
+	                    static_cast<unsigned>(speed_valid),
+	                    static_cast<unsigned>(time_valid));
+
+	if (position_valid)
+	{
+		(void)logger_.write("GNSS lat=%.6f lon=%.6f\r\n", latest->latitude, latest->longitude);
+	}
+	if (speed_valid)
+	{
+		(void)logger_.write("GNSS speed=%.2f m/s\r\n", static_cast<double>(latest->speed_mps));
+	}
+	if (time_valid)
+	{
+		char utc_time[21]{};
+		const auto time_converted = std::to_chars(utc_time, utc_time + sizeof(utc_time) - 1,
+		                                        static_cast<std::int64_t>(latest->utc_time));
+		if (time_converted.ec == std::errc{})
+		{
+			*time_converted.ptr = '\0';
+			(void)logger_.write("GNSS utc_unix_s=%s\r\n", utc_time);
+		}
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////

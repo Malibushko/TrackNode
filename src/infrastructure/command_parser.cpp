@@ -87,6 +87,10 @@ tl::expected<command, command_parse_error> parse_command(std::string_view line)
 		{
 			return command{ command_type::read_pressure };
 		}
+		if (matches(noun, "GNSS"))
+		{
+			return command{ command_type::read_gnss };
+		}
 		if (matches(noun, "LOG"))
 		{
 			return command{ command_type::read_log };

@@ -11,6 +11,7 @@ int main()
 	assert(ping && ping->type == command_type::ping);
 	assert(parse_command("GET TEMP")->type == command_type::read_temperature);
 	assert(parse_command("get pressure")->type == command_type::read_pressure);
+	assert(parse_command("get gnss")->type == command_type::read_gnss);
 	assert(parse_command("GET\tLOG")->type == command_type::read_log);
 	auto period = parse_command("SET SAMPLE_PERIOD 5000");
 	assert(period && period->type == command_type::set_sample_period);
@@ -22,6 +23,7 @@ int main()
 	assert(parse_command("SET SAMPLE_PERIOD").error() == command_parse_error::invalid_syntax);
 	assert(parse_command("PING extra").error() == command_parse_error::invalid_syntax);
 	assert(parse_command("GET TEMP extra").error() == command_parse_error::invalid_syntax);
+	assert(parse_command("GET GNSS extra").error() == command_parse_error::invalid_syntax);
 	assert(parse_command("GET UNKNOWN").error() == command_parse_error::unknown_command);
 	assert(parse_command("WHAT").error() == command_parse_error::unknown_command);
 	assert(parse_command("RESET STORAGE")->type == command_type::reset_storage_prepare);

@@ -22,7 +22,7 @@ result<log_record> format_sample_csv(const sensor_sample &sample,
 	if (gnss)
 	{
 		const auto age_ms = pdTICKS_TO_MS(recorded_at - gnss->received_at);
-		fresh = age_ms <= 5000;
+		fresh = age_ms <= gnss_freshness_limit_ms;
 		const auto sequence_result = std::to_chars(sequence, sequence + sizeof(sequence) - 1,
 		                                           gnss->sequence);
 		const auto age_result = std::to_chars(age, age + sizeof(age) - 1, age_ms);
