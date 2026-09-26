@@ -12,6 +12,8 @@ namespace
 {
 constexpr BYTE sd_drive = 0;
 sd_card* card = nullptr;
+sd_disk_progress_callback progress_callback = nullptr;
+void *progress_context = nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -29,6 +31,14 @@ void unbind_sd_card(sd_card& instance)
 	{
 		card = nullptr;
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void set_sd_disk_progress_callback(sd_disk_progress_callback callback, void *context)
+{
+	progress_callback = callback;
+	progress_context = context;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -102,6 +112,10 @@ extern "C" DRESULT disk_write(BYTE pdrv, const BYTE* buffer, LBA_t sector, UINT 
 		if (!card->write_block(static_cast<uint32_t>(sector + i), block, response))
 		{
 			return RES_ERROR;
+		}
+		if (progress_callback)
+		{
+			progress_callback(progress_context);
 		}
 	}
 

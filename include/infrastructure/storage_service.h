@@ -27,14 +27,18 @@ public: // Common lifecycle
 
 public: // Storage API
 	status submit_record(const log_record &record);
+	status request_format();
 	[[nodiscard]] storage_snapshot snapshot() const;
 
 private: // Common task loop
 	static void task_entry(void *argument);
+	static void format_progress(void *argument);
 	void run();
 
 private: // Storage internals
 	bool run(fatfs::Volume &volume);
+	void format_card(fatfs::Volume &volume);
+	void wait_for_retry();
 	void set_snapshot(service_health health, std::uint64_t size, TickType_t now,
 	                  const char *file_name = nullptr);
 
@@ -47,4 +51,5 @@ private: // State
 	TaskHandle_t task_ = nullptr;
 	mutable storage_snapshot snapshot_{};
 	std::atomic<std::uint32_t> dropped_{ 0 };
+	std::atomic<bool> format_requested_{ false };
 };

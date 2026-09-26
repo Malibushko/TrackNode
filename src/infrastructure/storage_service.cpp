@@ -6,6 +6,7 @@
 
 #include "perf.h"
 
+#include <array>
 #include <cstdio>
 #include <cstring>
 
@@ -103,6 +104,8 @@ status storage_service::start()
 
 void storage_service::stop()
 {
+	format_requested_.store(false);
+	set_sd_disk_progress_callback(nullptr, nullptr);
 	if (task_)
 	{
 		vTaskDelete(task_);
@@ -124,7 +127,8 @@ status storage_service::submit_record(const log_record &record)
 		dropped_.fetch_add(1);
 		return fail(component::storage, error_code::invalid_argument);
 	}
-	if (!inbox_ || monitor_.health(service_id::storage) != service_health::ready)
+	if (!inbox_ || format_requested_.load() ||
+	    monitor_.health(service_id::storage) != service_health::ready)
 	{
 		dropped_.fetch_add(1);
 		return fail(component::storage, error_code::not_initialized);
@@ -136,6 +140,23 @@ status storage_service::submit_record(const log_record &record)
 		return fail(component::storage, error_code::queue_full);
 	}
 
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status storage_service::request_format()
+{
+	if (!task_)
+	{
+		return fail(component::storage, error_code::not_initialized);
+	}
+	bool expected = false;
+	if (!format_requested_.compare_exchange_strong(expected, true))
+	{
+		return fail(component::storage, error_code::already_initialized);
+	}
+	xTaskNotifyGive(task_);
 	return {};
 }
 
@@ -176,6 +197,55 @@ void storage_service::task_entry(void *argument)
 
 //////////////////////////////////////////////////////////////////////////
 
+void storage_service::format_progress(void *argument)
+{
+	auto &service = *static_cast<storage_service *>(argument);
+	service.monitor_.progress(service_id::storage, common::get_tick());
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void storage_service::wait_for_retry()
+{
+	(void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5000));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void storage_service::format_card(fatfs::Volume &volume)
+{
+	set_snapshot(service_health::degraded, 0, common::get_tick());
+	monitor_.set_health(service_id::storage, service_health::degraded);
+	dropped_.fetch_add(uxQueueMessagesWaiting(inbox_), std::memory_order_relaxed);
+
+	xQueueReset(inbox_);
+	monitor_.progress(service_id::storage, common::get_tick());
+	(void)logger_.write("Storage format started; all SD data will be erased\r\n");
+
+	static std::array<BYTE, 4096> work{};
+	set_sd_disk_progress_callback(format_progress, this);
+	FRESULT result = volume.mkfs(fatfs::MkfsOptions{}, work.data(), work.size());
+	set_sd_disk_progress_callback(nullptr, nullptr);
+	if (result == FR_OK)
+	{
+		result = volume.mount();
+	}
+	volume.unmount();
+	format_requested_.store(false);
+	monitor_.progress(service_id::storage, common::get_tick());
+
+	if (result == FR_OK)
+	{
+		(void)logger_.write("OK STORAGE_FORMAT; filesystem verified\r\n");
+	}
+	else
+	{
+		(void)logger_.write("ERR STORAGE_FORMAT: %u\r\n", static_cast<unsigned>(result));
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void storage_service::run()
 {
 	fatfs::Volume volume(card_);
@@ -188,7 +258,13 @@ void storage_service::run()
 			set_snapshot(service_health::degraded, 0, common::get_tick());
 			monitor_.report(service_id::storage, initialized.error(), service_health::degraded);
 			monitor_.progress(service_id::storage, common::get_tick());
-			vTaskDelay(pdMS_TO_TICKS(5000));
+			wait_for_retry();
+			continue;
+		}
+
+		if (format_requested_.load())
+		{
+			format_card(volume);
 			continue;
 		}
 
@@ -203,16 +279,28 @@ void storage_service::run()
 		}
 
 		set_snapshot(service_health::degraded, 0, common::get_tick());
-		monitor_.report(service_id::storage,
-		                error(component::storage, error_code::storage_error),
-		                service_health::degraded);
+		if (format_requested_.load())
+		{
+			monitor_.set_health(service_id::storage, service_health::degraded);
+		}
+		else
+		{
+			monitor_.report(service_id::storage,
+			                error(component::storage, error_code::storage_error),
+			                service_health::degraded);
+		}
 		monitor_.progress(service_id::storage, common::get_tick());
 		dropped_.fetch_add(uxQueueMessagesWaiting(inbox_), std::memory_order_relaxed);
 		xQueueReset(inbox_);
 		volume.unmount();
+		if (format_requested_.load())
+		{
+			format_card(volume);
+			continue;
+		}
 
 		// Keep the sensor and console alive. A later card insertion can recover.
-		vTaskDelay(pdMS_TO_TICKS(5000));
+		wait_for_retry();
 	}
 }
 
@@ -285,8 +373,17 @@ bool storage_service::run(fatfs::Volume &volume)
 	bool dirty = false;
 	for (;;)
 	{
-		if (xQueueReceive(inbox_, &record, sync_interval) == pdPASS)
+		if (format_requested_.load())
 		{
+			return true;
+		}
+		if (xQueueReceive(inbox_, &record, pdMS_TO_TICKS(100)) == pdPASS)
+		{
+			if (format_requested_.load())
+			{
+				dropped_.fetch_add(1, std::memory_order_relaxed);
+				return true;
+			}
 			PERF_SCOPE(logger_, "storage record");
 
 			result = log.write(record.text.data(), record.length);

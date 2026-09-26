@@ -9,7 +9,9 @@ enum class command_type : std::uint8_t
 	read_temperature,
 	read_pressure,
 	read_log,
-	set_sample_period
+	set_sample_period,
+	reset_storage_prepare,
+	reset_storage_confirm
 };
 
 struct command

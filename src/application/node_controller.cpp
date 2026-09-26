@@ -214,6 +214,14 @@ void node_controller::handle_command(command value)
 		case command_type::set_sample_period:
 			handle_set_sample_period(value.sample_period_ms);
 			break;
+
+		case command_type::reset_storage_prepare:
+			(void)logger_.write("WARNING ALL SD DATA WILL BE ERASED; SEND RESET STORAGE CONFIRM\r\n");
+			break;
+
+		case command_type::reset_storage_confirm:
+			handle_reset_storage();
+			break;
 	}
 }
 
@@ -320,6 +328,18 @@ void node_controller::handle_set_sample_period(std::uint32_t period_ms)
 
 	sample_period_ = pdMS_TO_TICKS(period_ms);
 	(void)logger_.write("OK SAMPLE_PERIOD %lu\r\n", static_cast<unsigned long>(period_ms));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_reset_storage()
+{
+	if (auto queued = storage_.request_format(); !queued)
+	{
+		(void)logger_.write("ERR STORAGE_FORMAT_BUSY\r\n");
+		return;
+	}
+	(void)logger_.write("OK STORAGE_FORMAT_QUEUED\r\n");
 }
 
 //////////////////////////////////////////////////////////////////////////

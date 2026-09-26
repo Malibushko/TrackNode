@@ -39,6 +39,7 @@ private: // Application behavior
 	void handle_read_pressure();
 	void handle_read_log();
 	void handle_set_sample_period(std::uint32_t period_ms);
+	void handle_reset_storage();
 	bool ensure_sample_available();
 
 private: // State

@@ -114,6 +114,28 @@ tl::expected<command, command_parse_error> parse_command(std::string_view line)
 		return command{ command_type::set_sample_period, period_ms };
 	}
 
+	if (matches(verb, "RESET"))
+	{
+		if (!matches(noun, "STORAGE"))
+		{
+			return tl::make_unexpected(command_parse_error::unknown_command);
+		}
+		const auto confirmation = next_token(line);
+		if (!next_token(line).empty())
+		{
+			return tl::make_unexpected(command_parse_error::invalid_syntax);
+		}
+		if (confirmation.empty())
+		{
+			return command{ command_type::reset_storage_prepare };
+		}
+		if (matches(confirmation, "CONFIRM"))
+		{
+			return command{ command_type::reset_storage_confirm };
+		}
+		return tl::make_unexpected(command_parse_error::invalid_syntax);
+	}
+
 	return tl::make_unexpected(command_parse_error::unknown_command);
 }
 

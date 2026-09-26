@@ -24,6 +24,20 @@ int main()
 	assert(parse_command("GET TEMP extra").error() == command_parse_error::invalid_syntax);
 	assert(parse_command("GET UNKNOWN").error() == command_parse_error::unknown_command);
 	assert(parse_command("WHAT").error() == command_parse_error::unknown_command);
+	assert(parse_command("RESET STORAGE")->type == command_type::reset_storage_prepare);
+	assert(parse_command("reset storage confirm")->type == command_type::reset_storage_confirm);
+	assert(parse_command("RESET STORAGE extra").error() == command_parse_error::invalid_syntax);
+	assert(parse_command("RESET STORAGE CONFIRM extra").error() == command_parse_error::invalid_syntax);
+	track_node_control_protocol format_protocol;
+	for (char byte : std::string("RESET STORAGE CONFIRM\r"))
+	{
+		const auto event = format_protocol.feed(static_cast<std::uint8_t>(byte));
+		if (byte == '\r')
+		{
+			assert(event.type == protocol_event_type::command);
+			assert(event.value.type == command_type::reset_storage_confirm);
+		}
+	}
 
 	track_node_control_protocol protocol;
 	for (char byte : std::string("GET TEMP\r\n"))
