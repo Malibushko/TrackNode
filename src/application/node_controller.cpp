@@ -2,6 +2,7 @@
 #include "application/log_record.h"
 
 #include "infrastructure/indicator_service.h"
+#include "infrastructure/gnss_service.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/sensor_service.h"
 #include "infrastructure/storage_service.h"
@@ -11,9 +12,9 @@
 
 node_controller::node_controller(sensor_service &sensor, storage_service &storage,
                                  indicator_service &indicator, logger_service &logger,
-                                 supervisor &monitor)
+                                 gnss_service &gnss, supervisor &monitor)
     : sensor_(sensor), storage_(storage), indicator_(indicator),
-      logger_(logger), monitor_(monitor)
+      logger_(logger), gnss_(gnss), monitor_(monitor)
 {
 }
 
@@ -159,7 +160,25 @@ void node_controller::take_sample()
 		};
 		monitor_.progress(service_id::sensor, now);
 
-		if (auto record = format_sample_csv(*last_sample_))
+		std::optional<gnss_sample> gnss;
+		if (const auto latest = gnss_.read())
+		{
+			gnss = gnss_sample{
+			    .sequence = latest->sequence,
+			    .received_at = latest->received_at,
+			    .position = latest->position_valid
+			                    ? std::optional<geo_position>{{latest->latitude, latest->longitude}}
+			                    : std::nullopt,
+			    .speed_mps = latest->speed_valid
+			                     ? std::optional<float>{latest->speed_mps}
+			                     : std::nullopt,
+			    .utc_time = latest->time_valid
+			                    ? std::optional<std::time_t>{latest->utc_time}
+			                    : std::nullopt,
+			};
+		}
+
+		if (auto record = format_sample_csv(*last_sample_, gnss, xTaskGetTickCount()))
 		{
 			monitor_.set_health(service_id::sensor, service_health::ready);
 #ifdef FAULT_INJECTION_ENABLE

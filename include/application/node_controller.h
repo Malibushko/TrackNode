@@ -10,6 +10,7 @@ class storage_service;
 class indicator_service;
 class logger_service;
 class supervisor;
+class gnss_service;
 
 // The application workflow: sampling cadence, command meaning and data flow.
 class node_controller final : public command_sink
@@ -17,7 +18,7 @@ class node_controller final : public command_sink
 public:
 	node_controller(sensor_service &sensor, storage_service &storage,
 	                indicator_service &indicator, logger_service &logger,
-	                supervisor &monitor);
+	                gnss_service &gnss, supervisor &monitor);
 
 public: // Common lifecycle
 	status start();
@@ -47,6 +48,7 @@ private: // State
 	storage_service &storage_;
 	indicator_service &indicator_;
 	logger_service &logger_;
+	gnss_service &gnss_;
 	supervisor &monitor_;
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;

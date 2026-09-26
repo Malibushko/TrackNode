@@ -3,6 +3,8 @@
 #include "core/result.h"
 
 #include <cstdint>
+#include <ctime>
+#include <optional>
 
 struct sensor_sample
 {
@@ -11,4 +13,19 @@ struct sensor_sample
 	float temperature_c = 0;
 	float pressure_pa = 0;
 	bool valid = false;
+};
+
+struct geo_position
+{
+	double latitude = 0;
+	double longitude = 0;
+};
+
+struct gnss_sample
+{
+	std::uint64_t sequence = 0;
+	TickType_t received_at = 0;
+	std::optional<geo_position> position;
+	std::optional<float> speed_mps;
+	std::optional<std::time_t> utc_time;
 };

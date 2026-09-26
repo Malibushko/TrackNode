@@ -12,7 +12,7 @@ track_node::track_node(component_list &devices, uart &console, bmp280 &sensor,
 	  sensor_(sensor),
 	  indicator_(logger_, supervisor_),
 	  gnss_(gps, logger_, supervisor_),
-	  controller_(sensor_, storage_, indicator_, logger_, supervisor_),
+	  controller_(sensor_, storage_, indicator_, logger_, gnss_, supervisor_),
 	  console_(console, controller_, logger_, supervisor_)
 {
 }
@@ -83,9 +83,9 @@ status track_node::startup()
 	started = logger_.start()
 	              .and_then([&]() -> status { return storage_.start(); })
 	              .and_then([&]() -> status { return indicator_.start(); })
+	              .and_then([&]() -> status { return gnss_.start(); })
 	              .and_then([&]() -> status { return controller_.start(); })
 	              .and_then([&]() -> status { return console_.start(); })
-	              .and_then([&]() -> status { return gnss_.start(); })
 	              .and_then([&]() -> status { return supervisor_.start(); });
 	if (!started)
 	{
