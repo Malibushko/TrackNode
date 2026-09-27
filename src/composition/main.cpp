@@ -2,6 +2,7 @@
 #include "board/clock.h"
 #include "core/component_list.h"
 #include "drivers/devices/neo6m.h"
+#include "drivers/devices/sx126x.h"
 #include "platform/error.h"
 
 int main()
@@ -52,6 +53,34 @@ int main()
 		.mode = UART_MODE_RX,
 	} };
 
+	static spi_bus radio_bus = spi_bus { spi_bus_config {
+		.instance = SPI2,
+		.baud_rate_prescaler = SPI_BAUDRATEPRESCALER_8,
+		.pin_sck  = { GPIOB, GPIO_PIN_13 },
+		.pin_miso = { GPIOB, GPIO_PIN_14 },
+		.pin_mosi = { GPIOB, GPIO_PIN_15, }
+	} };
+
+	static sx126x_driver radio_module = sx126x_driver{ radio_bus, sx126x_config {
+		.nss   = { GPIOB, GPIO_PIN_12 },
+		.reset = { GPIOA, GPIO_PIN_4 },
+		.busy  = { GPIOB, GPIO_PIN_0 },
+		.dio1  = { GPIOA, GPIO_PIN_5 },
+		.txen  = { GPIOA, GPIO_PIN_6 },
+		.rxen  = { GPIOA, GPIO_PIN_7 },
+		.frequency_hz = 868'100'000,
+		.spreading_factor = 7,
+		.bandwidth = sx126x_lora_bandwidth::KHZ_125,
+		.coding_rate = sx126x_lora_coding_rate::CR_4_5,
+		.low_data_rate_optimization = false,
+		.preamble_symbols = 8,
+		.explicit_header = true,
+		.crc_enabled = true,
+		.invert_iq = false,
+		.sync_word = 0x1424,
+		.tx_power_dbm = 10
+	}};
+
 	static neo6m gps_module { gps_transport };
 
 	static component_list devices;
@@ -63,7 +92,10 @@ int main()
 	    .and_then([&]() -> status { return devices.add("storage", storage, component_startup::defer); })
 	    .and_then([&]() -> status { return devices.add("watchdog", watchdog_device, component_startup::defer); })
 		.and_then([&]() -> status { return devices.add("gps_transport", gps_transport, component_startup::initialize); })
-	    .and_then([&]() -> status { return devices.add("gps", gps_module, component_startup::defer); });
+	    .and_then([&]() -> status { return devices.add("gps", gps_module, component_startup::defer); })
+		.and_then([&]() -> status { return devices.add("radio_bus", radio_bus, component_startup::initialize);})
+		.and_then([&]() -> status { return devices.add("radio", radio_module, component_startup::initialize);}); // TODO: change to defer after testing
+
 	if (!registered)
 	{
 		panic();
@@ -78,7 +110,7 @@ int main()
 		panic();
 	}
 
-	static track_node application{ devices, *console_device, *sensor_device, *storage_device, gps_module, *watchdog };
+	static track_node application{ devices, *console_device, *sensor_device, *storage_device, gps_module, radio_module, *watchdog };
 	if (auto started = application.init(); !started && !application.can_signal_error())
 	{
 		panic();

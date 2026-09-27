@@ -9,16 +9,13 @@
 #include "infrastructure/supervisor.h"
 #include "core/component_list.h"
 #include "core/hardware_object.h"
+#include "drivers/devices/sx126x.h"
 #include "infrastructure/gnss_service.h"
 
 class track_node : public hardware_object
 {
-public:
-	track_node(component_list &devices, uart &console, bmp280 &sensor,
-	           sd_card &storage, neo6m& gps, watchdog &watchdog_device);
-
 public: // Application lifecycle
-	track_node(component_list &devices, uart &console, bmp280 &sensor, sd_card &storage, watchdog &watchdog_device);
+	track_node(component_list &devices, uart &console, bmp280 &sensor, sd_card &storage, neo6m& gps, sx126x_driver& radio, watchdog &watchdog_device);
 	status init();
 	[[noreturn]] void launch();
 

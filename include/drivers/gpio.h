@@ -36,7 +36,7 @@ public:
 	}
 
 	status init();
-	[[nodiscard]] result<bool> read() const;
+	[[nodiscard]] result<state> read() const;
 	status write(state signal);
 	status toggle();
 

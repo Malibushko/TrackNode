@@ -3,7 +3,7 @@
 #include "common/common.h"
 
 track_node::track_node(component_list &devices, uart &console, bmp280 &sensor,
-                       sd_card &storage, neo6m& gps, watchdog &watchdog_device)
+                       sd_card &storage, neo6m& gps, sx126x_driver& radio, watchdog &watchdog_device)
 	: devices_(devices),
 	  supervisor_(watchdog_device),
 	  logger_(console, supervisor_),

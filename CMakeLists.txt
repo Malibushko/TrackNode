@@ -28,7 +28,9 @@ if(CMAKE_CROSSCOMPILING)
             include/drivers/protocols/nmea0183_types.h
             src/drivers/protocols/nmea0183.cpp
             src/drivers/devices/neo6m.cpp
-            include/infrastructure/gnss_service.h)
+            include/infrastructure/gnss_service.h
+            include/drivers/devices/sx126x.h
+            include/misc/bits_helpers.h)
     add_subdirectory(src)
     include(cmake/stm32cube_sources.cmake)
     include(cmake/vendor_sources.cmake)

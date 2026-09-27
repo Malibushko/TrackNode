@@ -46,6 +46,7 @@ enum class error_code
 	not_implemented,
 	storage_error,
 	not_ready,
+	unknown_error
 };
 
 struct error

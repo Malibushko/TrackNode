@@ -69,7 +69,7 @@ status gpio::init()
 
 //////////////////////////////////////////////////////////////////////////
 
-result<bool> gpio::read() const
+result<gpio::state> gpio::read() const
 {
 	if (!initialized_)
 	{
@@ -81,7 +81,14 @@ result<bool> gpio::read() const
 		return fail(component::gpio, error_code::invalid_config);
 	}
 
-	return HAL_GPIO_ReadPin(config_.pin.port, config_.pin.mask) == GPIO_PIN_SET;
+	state state = HAL_GPIO_ReadPin(config_.pin.port, config_.pin.mask) == GPIO_PIN_SET ? state::set : state::reset;
+
+	if (config_.active_low)
+	{
+		state = state == state::set ? state::reset : state::set;
+	}
+
+	return state;
 }
 
 //////////////////////////////////////////////////////////////////////////
