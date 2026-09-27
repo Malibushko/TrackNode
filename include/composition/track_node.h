@@ -11,6 +11,7 @@
 #include "core/hardware_object.h"
 #include "drivers/devices/sx126x.h"
 #include "infrastructure/gnss_service.h"
+#include "infrastructure/radio_service.h"
 
 class track_node : public hardware_object
 {
@@ -30,6 +31,7 @@ public: // Application state and diagnostics
 		std::uint32_t dropped_logs;
 		std::uint32_t failed_uart_writes;
 		std::uint32_t dropped_samples;
+		std::uint32_t dropped_radio_samples;
 	};
 
 	[[nodiscard]] delivery_statistics statistics() const;
@@ -46,6 +48,7 @@ private:
 	sensor_service sensor_;
 	indicator_service indicator_;
 	gnss_service gnss_;
+	radio_service radio_;
 	node_controller controller_;
 	console_service console_;
 	bool attempted_ = false;

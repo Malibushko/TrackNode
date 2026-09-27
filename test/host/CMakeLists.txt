@@ -32,6 +32,10 @@ add_executable(log_record_test log_record_test.cpp "${PROJECT_SOURCE_DIR}/src/ap
 target_link_libraries(log_record_test PRIVATE host_headers)
 add_test(NAME log_record_test COMMAND log_record_test)
 
+add_executable(radio_packet_test radio_packet_test.cpp "${PROJECT_SOURCE_DIR}/src/application/radio_packet.cpp")
+target_link_libraries(radio_packet_test PRIVATE host_headers)
+add_test(NAME radio_packet_test COMMAND radio_packet_test)
+
 add_executable(nmea0183_test nmea0183_test.cpp "${PROJECT_SOURCE_DIR}/src/drivers/protocols/nmea0183.cpp")
 target_link_libraries(nmea0183_test PRIVATE host_headers)
 add_test(NAME nmea0183_test COMMAND nmea0183_test)
@@ -44,7 +48,7 @@ target_link_libraries(neo6m_test PRIVATE host_headers)
 add_test(NAME neo6m_test COMMAND neo6m_test)
 
 if(MINGW)
-    foreach(test_target component_list_test pwm_test application_test command_protocol_test supervisor_policy_test log_record_test nmea0183_test neo6m_test)
+    foreach(test_target component_list_test pwm_test application_test command_protocol_test supervisor_policy_test log_record_test radio_packet_test nmea0183_test neo6m_test)
         target_link_options(${test_target} PRIVATE -static-libgcc -static-libstdc++)
     endforeach()
 endif()

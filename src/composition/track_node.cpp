@@ -12,7 +12,8 @@ track_node::track_node(component_list &devices, uart &console, bmp280 &sensor,
 	  sensor_(sensor),
 	  indicator_(logger_, supervisor_),
 	  gnss_(gps, logger_, supervisor_),
-	  controller_(sensor_, storage_, indicator_, logger_, gnss_, supervisor_),
+	  radio_(radio, logger_, supervisor_),
+	  controller_(sensor_, storage_, indicator_, logger_, gnss_, radio_, supervisor_),
 	  console_(console, controller_, logger_, supervisor_)
 {
 }
@@ -84,6 +85,7 @@ status track_node::startup()
 	              .and_then([&]() -> status { return storage_.start(); })
 	              .and_then([&]() -> status { return indicator_.start(); })
 	              .and_then([&]() -> status { return gnss_.start(); })
+	              .and_then([&]() -> status { return radio_.start(); })
 	              .and_then([&]() -> status { return controller_.start(); })
 	              .and_then([&]() -> status { return console_.start(); })
 	              .and_then([&]() -> status { return supervisor_.start(); });
@@ -101,6 +103,7 @@ void track_node::stop_workers()
 	supervisor_.stop();
 	console_.stop();
 	controller_.stop();
+	radio_.stop();
 	indicator_.stop();
 	storage_.stop();
 	gnss_.stop();
@@ -112,7 +115,8 @@ void track_node::stop_workers()
 track_node::delivery_statistics track_node::statistics() const
 {
 	return { console_.rejected_commands(), logger_.dropped_count(),
-	         logger_.failed_writes(), storage_.snapshot().dropped_samples };
+	         logger_.failed_writes(), storage_.snapshot().dropped_samples,
+	         radio_.dropped_count() };
 }
 
 //////////////////////////////////////////////////////////////////////////

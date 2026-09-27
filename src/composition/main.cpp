@@ -94,7 +94,7 @@ int main()
 		.and_then([&]() -> status { return devices.add("gps_transport", gps_transport, component_startup::initialize); })
 	    .and_then([&]() -> status { return devices.add("gps", gps_module, component_startup::defer); })
 		.and_then([&]() -> status { return devices.add("radio_bus", radio_bus, component_startup::initialize);})
-		.and_then([&]() -> status { return devices.add("radio", radio_module, component_startup::initialize);}); // TODO: change to defer after testing
+		.and_then([&]() -> status { return devices.add("radio", radio_module, component_startup::defer);});
 
 	if (!registered)
 	{

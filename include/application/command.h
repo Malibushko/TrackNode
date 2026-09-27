@@ -12,7 +12,8 @@ enum class command_type : std::uint8_t
 	read_log,
 	set_sample_period,
 	reset_storage_prepare,
-	reset_storage_confirm
+	reset_storage_confirm,
+	error
 };
 
 struct command

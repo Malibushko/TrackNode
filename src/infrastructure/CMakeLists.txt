@@ -8,4 +8,5 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     storage_service.cpp
     supervisor.cpp
     gnss_service.cpp
+	radio_service.cpp
 )

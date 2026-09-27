@@ -4,6 +4,7 @@
 #include "infrastructure/indicator_service.h"
 #include "infrastructure/gnss_service.h"
 #include "infrastructure/logger_service.h"
+#include "infrastructure/radio_service.h"
 #include "infrastructure/sensor_service.h"
 #include "infrastructure/storage_service.h"
 #include "infrastructure/supervisor.h"
@@ -12,9 +13,9 @@
 
 node_controller::node_controller(sensor_service &sensor, storage_service &storage,
                                  indicator_service &indicator, logger_service &logger,
-                                 gnss_service &gnss, supervisor &monitor)
+                                 gnss_service &gnss, radio_service &radio, supervisor &monitor)
     : sensor_(sensor), storage_(storage), indicator_(indicator),
-      logger_(logger), gnss_(gnss), monitor_(monitor)
+      logger_(logger), gnss_(gnss), radio_(radio), monitor_(monitor)
 {
 }
 
@@ -178,7 +179,9 @@ void node_controller::take_sample()
 			};
 		}
 
-		if (auto record = format_sample_csv(*last_sample_, gnss, xTaskGetTickCount()))
+		const TickType_t recorded_at = xTaskGetTickCount();
+		(void)radio_.submit(*last_sample_, gnss, recorded_at);
+		if (auto record = format_sample_csv(*last_sample_, gnss, recorded_at))
 		{
 			monitor_.set_health(service_id::sensor, service_health::ready);
 #ifdef FAULT_INJECTION_ENABLE
@@ -244,6 +247,10 @@ void node_controller::handle_command(command value)
 
 		case command_type::reset_storage_confirm:
 			handle_reset_storage();
+			break;
+
+		case command_type::error:
+			(void)logger_.write("LAST ERROR:", to_string(monitor_.last_error()));
 			break;
 	}
 }

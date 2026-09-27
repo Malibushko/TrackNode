@@ -22,6 +22,7 @@ enum class service_id : std::uint8_t
 	indicator,
 	watchdog,
 	gnss,
+	radio,
 	count
 };
 
