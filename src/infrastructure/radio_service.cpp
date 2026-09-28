@@ -13,6 +13,8 @@ status radio_service::start()
 {
 	if (inbox_)
 		return fail(component::rtos, error_code::already_initialized);
+	if (auto initialized = radio_.init(); !initialized)
+		return initialized;
 
 	inbox_ = xQueueCreate(4, sizeof(radio_job));
 

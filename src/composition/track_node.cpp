@@ -22,7 +22,7 @@ track_node::track_node(component_list &devices, uart &console, bmp280 &sensor,
 
 status track_node::init()
 {
-	auto created = task_create(init_task, "init", configMINIMAL_STACK_SIZE * 4, this, configMAX_PRIORITIES - 1);
+	auto created = task_create(init_task, "init", configMINIMAL_STACK_SIZE * 6, this, configMAX_PRIORITIES - 1);
 	if (!created)
 	{
 		return tl::make_unexpected(created.error());

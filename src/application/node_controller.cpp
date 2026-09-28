@@ -248,10 +248,6 @@ void node_controller::handle_command(command value)
 		case command_type::reset_storage_confirm:
 			handle_reset_storage();
 			break;
-
-		case command_type::error:
-			(void)logger_.write("LAST ERROR:", to_string(monitor_.last_error()));
-			break;
 	}
 }
 
