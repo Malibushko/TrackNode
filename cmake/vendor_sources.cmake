@@ -9,7 +9,12 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     "${PROJECT_SOURCE_DIR}/lib/FreeRTOS/timers.c"
     "${PROJECT_SOURCE_DIR}/lib/FreeRTOS/portable/ARM_CM4F/port.c"
     "${PROJECT_SOURCE_DIR}/lib/FreeRTOS/portable/MemMang/heap_4.c"
-    "${PROJECT_SOURCE_DIR}/lib/fatfs/source/ff.c"
-    "${PROJECT_SOURCE_DIR}/lib/fatfs/source/ffsystem.c"
-    "${PROJECT_SOURCE_DIR}/lib/fatfs/source/ffunicode.c"
 )
+
+if(NOT NO_STORAGE)
+    target_sources(${TRACK_NODE_TARGET} PRIVATE
+        "${PROJECT_SOURCE_DIR}/lib/fatfs/source/ff.c"
+        "${PROJECT_SOURCE_DIR}/lib/fatfs/source/ffsystem.c"
+        "${PROJECT_SOURCE_DIR}/lib/fatfs/source/ffunicode.c"
+    )
+endif()
