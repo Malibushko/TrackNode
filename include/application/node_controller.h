@@ -5,6 +5,8 @@
 
 #include <optional>
 
+#include "common/power_mode.h"
+
 class sensor_service;
 class storage_service;
 class indicator_service;
@@ -47,6 +49,8 @@ private: // Application behavior
 	void handle_set_sample_period(std::uint32_t period_ms);
 	void handle_reset_storage();
 	bool ensure_sample_available();
+
+	void set_power_mode(power_mode power_mode);
 
 private: // State
 	sensor_service &sensor_;

@@ -41,6 +41,15 @@
       }
     },
     {
+      "name": "f411-tickless-debug-no-storage",
+      "displayName": "STM32F411 tickless with SWD during Sleep, without SD storage",
+      "inherits": "f411-tickless-no-storage",
+      "binaryDir": "${sourceDir}/build/f411-tickless-debug-no-storage",
+      "cacheVariables": {
+        "TRACK_NODE_DEBUG_IN_SLEEP": "ON"
+      }
+    },
+    {
       "name": "f411-tickless",
       "displayName": "STM32F411 FreeRTOS tickless experiment",
       "inherits": "f411",
@@ -65,6 +74,7 @@
     { "name": "f411", "configurePreset": "f411" },
     { "name": "f411-no-storage", "configurePreset": "f411-no-storage" },
     { "name": "f411-tickless-no-storage", "configurePreset": "f411-tickless-no-storage" },
+    { "name": "f411-tickless-debug-no-storage", "configurePreset": "f411-tickless-debug-no-storage" },
     { "name": "f411-tickless", "configurePreset": "f411-tickless" },
     { "name": "f411-fault", "configurePreset": "f411-fault" }
   ],

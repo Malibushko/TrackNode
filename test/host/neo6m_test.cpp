@@ -65,6 +65,13 @@ int main()
 	assert(empty_device.init());
 	const auto empty_read = empty_device.read_snapshot(100);
 	assert(!empty_read && empty_read.error().code == error_code::not_ready);
+	assert(empty_device.standby_for(120'000));
+	assert((empty_transport.last_write == std::vector<std::uint8_t>{
+	    0xB5, 0x62, 0x02, 0x41, 0x08, 0x00, 0xC0, 0xD4,
+	    0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0xE2, 0x0D
+	}));
+	assert(empty_device.wake());
+	assert((empty_transport.last_write == std::vector<std::uint8_t>{ 0xFF }));
 
 	const auto valid = decode_fields("083559.00", "A", "4717.11437", "N", "00833.91522", "E", "0.004", "091202");
 	assert(valid && valid->position_valid && valid->speed_valid && valid->time_valid);

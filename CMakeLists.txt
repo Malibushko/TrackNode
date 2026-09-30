@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(FAULT_INJECTION_ENABLE "Inject random faults to simulate real world conditions" OFF)
 option(PERF_MEASURING "Log scoped execution times" OFF)
 option(TRACK_NODE_TICKLESS_IDLE "Try FreeRTOS tickless idle in the full firmware" OFF)
+option(TRACK_NODE_DEBUG_IN_SLEEP "Keep the STM32 debug interface active during Sleep" OFF)
 option(NO_STORAGE "Build TrackNode without SD card and filesystem" OFF)
 
 if(CMAKE_CROSSCOMPILING)
@@ -32,7 +33,8 @@ if(CMAKE_CROSSCOMPILING)
             src/drivers/devices/neo6m.cpp
             include/infrastructure/gnss_service.h
             include/drivers/devices/sx126x.h
-            include/misc/bits_helpers.h)
+            include/misc/bits_helpers.h
+            include/common/power_mode.h)
     add_subdirectory(src)
     include(cmake/stm32cube_sources.cmake)
     include(cmake/vendor_sources.cmake)
@@ -61,6 +63,10 @@ if(CMAKE_CROSSCOMPILING)
         target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE TRACK_NODE_TICKLESS_IDLE=1)
     endif()
 
+    if(TRACK_NODE_DEBUG_IN_SLEEP)
+        target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE TRACK_NODE_DEBUG_IN_SLEEP=1)
+    endif()
+
     if(NO_STORAGE)
         target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE NO_STORAGE=1)
     endif()
@@ -70,6 +76,15 @@ if(CMAKE_CROSSCOMPILING)
         add_custom_target(flash
             COMMAND "${TRACK_NODE_PROGRAMMER_CLI}"
                     -c ${TRACK_NODE_FLASH_CONNECT_ARGS}
+                    -w "$<TARGET_FILE:${TRACK_NODE_TARGET}>"
+                    ${TRACK_NODE_FLASH_OPTIONS}
+            DEPENDS ${TRACK_NODE_TARGET}
+            USES_TERMINAL
+            VERBATIM
+        )
+        add_custom_target(flash-under-reset
+            COMMAND "${TRACK_NODE_PROGRAMMER_CLI}"
+                    -c port=SWD mode=UR reset=HWrst freq=400
                     -w "$<TARGET_FILE:${TRACK_NODE_TARGET}>"
                     ${TRACK_NODE_FLASH_OPTIONS}
             DEPENDS ${TRACK_NODE_TARGET}

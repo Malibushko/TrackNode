@@ -8,6 +8,9 @@
 int main()
 {
 	HAL_Init();
+#ifdef TRACK_NODE_DEBUG_IN_SLEEP
+	HAL_DBGMCU_EnableDBGSleepMode();
+#endif
 	if (!init_system_clock())
 	{
 		panic();
@@ -52,7 +55,7 @@ int main()
 		.rx = { GPIOA, GPIO_PIN_3 },
 		.alternate = GPIO_AF7_USART2,
 		.baud_rate = 9600,
-		.mode = UART_MODE_RX,
+		.mode = UART_MODE_TX_RX,
 	} };
 
 	static spi_bus radio_bus = spi_bus { spi_bus_config {

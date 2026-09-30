@@ -33,6 +33,8 @@ public:
 	}
 
 	status init();
+	status standby_for(uint32_t time_ms);
+	status wake();
 	[[nodiscard]] result<snapshot> read_snapshot(uint32_t timeout_ms);
 
 private:

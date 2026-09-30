@@ -104,7 +104,10 @@
  * support tickless mode. See
  * https://www.freertos.org/low-power-tickless-rtos.html Defaults to 0 if left
  * undefined. */
-#define configUSE_TICKLESS_IDLE                    0
+#ifndef TRACK_NODE_TICKLESS_IDLE
+#define TRACK_NODE_TICKLESS_IDLE                   0
+#endif
+#define configUSE_TICKLESS_IDLE                    TRACK_NODE_TICKLESS_IDLE
 
 /* configMAX_PRIORITIES Sets the number of available task priorities.  Tasks can
  * be assigned priorities of 0 to (configMAX_PRIORITIES - 1).  Zero is the

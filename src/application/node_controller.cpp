@@ -101,6 +101,10 @@ void node_controller::run()
 	take_sample();
 	TickType_t last_sample_at = xTaskGetTickCount();
 
+#ifdef TRACK_NODE_TICKLESS_IDLE
+	set_power_mode(power_mode::low);
+#endif
+
 	for (;;)
 	{
 		const TickType_t elapsed = xTaskGetTickCount() - last_sample_at;
@@ -303,6 +307,13 @@ bool node_controller::ensure_sample_available()
 
 //////////////////////////////////////////////////////////////////////////
 
+void node_controller::set_power_mode(power_mode power_mode)
+{
+	gnss_.set_power_mode(power_mode);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void node_controller::handle_read_temperature()
 {
 	if (!ensure_sample_available())
@@ -337,6 +348,7 @@ void node_controller::handle_read_pressure()
 
 void node_controller::handle_read_gnss()
 {
+	gnss_.request_lookup();
 	const auto latest = gnss_.read();
 	if (!latest)
 	{

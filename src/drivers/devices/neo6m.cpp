@@ -255,6 +255,62 @@ status neo6m::init()
 	return {};
 }
 
+status neo6m::standby_for(uint32_t duration_ms)
+{
+	if (!initialized_)
+	{
+		return fail(component::uart_device, error_code::not_initialized);
+	}
+
+	constexpr uint32_t write_timeout_ms = 100;
+	constexpr uint32_t flag_backup = 0x00000002;
+
+	uint8_t command[] = {
+		0xB5, 0x62,                                     // sync chars
+		0x02, 0x41,                                     // class RXM, id PMREQ
+		0x08, 0x00,                                     // payload length = 8 (LE)
+		static_cast<uint8_t>(duration_ms),              // duration (LE)
+		static_cast<uint8_t>(duration_ms >> 8),
+		static_cast<uint8_t>(duration_ms >> 16),
+		static_cast<uint8_t>(duration_ms >> 24),
+		static_cast<uint8_t>(flag_backup),              // flags (LE)
+		static_cast<uint8_t>(flag_backup >> 8),
+		static_cast<uint8_t>(flag_backup >> 16),
+		static_cast<uint8_t>(flag_backup >> 24),
+		0x00, 0x00                                      // CK_A, CK_B
+	};
+
+	// Fletcher-8 по class, id, length и payload (байты с 2 по 13)
+	uint8_t ck_a = 0;
+	uint8_t ck_b = 0;
+	for (std::size_t i = 2; i < sizeof(command) - 2; ++i)
+	{
+		ck_a = static_cast<uint8_t>(ck_a + command[i]);
+		ck_b = static_cast<uint8_t>(ck_b + ck_a);
+	}
+	command[sizeof(command) - 2] = ck_a;
+	command[sizeof(command) - 1] = ck_b;
+
+	if (auto result = transport_.write(command, sizeof(command), write_timeout_ms); !result)
+	{
+		return fail(component::uart, result.error().code);
+	}
+
+	protocol_.reset();  // выбросить недособранную NMEA-строку
+	return {};
+}
+
+status neo6m::wake()
+{
+	if (!initialized_)
+	{
+		return fail(component::uart_device, error_code::not_initialized);
+	}
+
+	const uint8_t wake_byte = 0xFF;
+	return transport_.write(&wake_byte, 1, 100);
+}
+
 result<neo6m::snapshot> neo6m::read_snapshot(uint32_t timeout_ms)
 {
 	if (!initialized_)
