@@ -5,7 +5,9 @@
 #include "infrastructure/indicator_service.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/sensor_service.h"
+#ifndef NO_STORAGE
 #include "infrastructure/storage_service.h"
+#endif
 #include "infrastructure/supervisor.h"
 #include "core/component_list.h"
 #include "core/hardware_object.h"
@@ -16,7 +18,11 @@
 class track_node : public hardware_object
 {
 public: // Application lifecycle
-	track_node(component_list &devices, uart &console, bmp280 &sensor, sd_card &storage, neo6m& gps, sx126x_driver& radio, watchdog &watchdog_device);
+	track_node(component_list &devices, uart &console, bmp280 &sensor,
+#ifndef NO_STORAGE
+	           sd_card &storage,
+#endif
+	           neo6m &gps, sx126x_driver &radio, watchdog &watchdog_device);
 	status init();
 	[[noreturn]] void launch();
 
@@ -44,7 +50,9 @@ private:
 	component_list &devices_;
 	supervisor supervisor_;
 	logger_service logger_;
+#ifndef NO_STORAGE
 	storage_service storage_;
+#endif
 	sensor_service sensor_;
 	indicator_service indicator_;
 	gnss_service gnss_;

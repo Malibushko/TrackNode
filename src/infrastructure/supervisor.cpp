@@ -130,9 +130,14 @@ void supervisor::run()
 	{
 		const TickType_t now = xTaskGetTickCount();
 		const progress_observation observed{
-		    health(service_id::sensor), health(service_id::storage),
+		    health(service_id::sensor),
+#ifndef NO_STORAGE
+		    health(service_id::storage),
+#endif
 		    last_progress_[index(service_id::sensor)].load(std::memory_order_relaxed),
-		    last_progress_[index(service_id::storage)].load(std::memory_order_relaxed)
+#ifndef NO_STORAGE
+		    last_progress_[index(service_id::storage)].load(std::memory_order_relaxed),
+#endif
 		};
 
 		if (should_refresh_watchdog(now, started, observed))

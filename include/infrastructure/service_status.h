@@ -17,7 +17,9 @@ enum class service_id : std::uint8_t
 {
 	console,
 	sensor,
+#ifndef NO_STORAGE
 	storage,
+#endif
 	logger,
 	indicator,
 	watchdog,
@@ -34,6 +36,7 @@ enum class service_health : std::uint8_t
 	failed
 };
 
+#ifndef NO_STORAGE
 struct storage_snapshot
 {
 	service_health health = service_health::starting;
@@ -42,3 +45,4 @@ struct storage_snapshot
 	TickType_t observed_at = 0;
 	std::uint32_t dropped_samples = 0;
 };
+#endif

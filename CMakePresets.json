@@ -22,6 +22,34 @@
       }
     },
     {
+      "name": "f411-no-storage",
+      "displayName": "STM32F411 without SD storage",
+      "inherits": "f411",
+      "binaryDir": "${sourceDir}/build/f411-no-storage",
+      "cacheVariables": {
+        "NO_STORAGE": "ON"
+      }
+    },
+    {
+      "name": "f411-tickless-no-storage",
+      "displayName": "STM32F411 tickless without SD storage",
+      "inherits": "f411",
+      "binaryDir": "${sourceDir}/build/f411-tickless-no-storage",
+      "cacheVariables": {
+        "NO_STORAGE": "ON",
+        "TRACK_NODE_TICKLESS_IDLE": "ON"
+      }
+    },
+    {
+      "name": "f411-tickless",
+      "displayName": "STM32F411 FreeRTOS tickless experiment",
+      "inherits": "f411",
+      "binaryDir": "${sourceDir}/build/f411-tickless",
+      "cacheVariables": {
+        "TRACK_NODE_TICKLESS_IDLE": "ON"
+      }
+    },
+    {
       "name": "f411-fault",
       "displayName": "STM32F411 fault injection",
       "inherits": "f411",
@@ -35,6 +63,9 @@
   "buildPresets": [
     { "name": "host", "configurePreset": "host" },
     { "name": "f411", "configurePreset": "f411" },
+    { "name": "f411-no-storage", "configurePreset": "f411-no-storage" },
+    { "name": "f411-tickless-no-storage", "configurePreset": "f411-tickless-no-storage" },
+    { "name": "f411-tickless", "configurePreset": "f411-tickless" },
     { "name": "f411-fault", "configurePreset": "f411-fault" }
   ],
   "testPresets": [

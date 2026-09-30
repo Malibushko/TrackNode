@@ -29,6 +29,7 @@ int main()
 	} };
 	static i2c_device sensor_transport{ sensor_bus, 0x76 };
 	static bmp280 sensor{ sensor_transport, bmp280::config{} };
+#ifndef NO_STORAGE
 	static spi_bus storage_bus{ spi_bus_config{
 	    .instance = SPI1,
 	    .baud_rate_prescaler = SPI_BAUDRATEPRESCALER_256,
@@ -39,6 +40,7 @@ int main()
 	static sd_card storage{ storage_bus, spi_device_config{
 	    .cs_pin = { GPIOA, GPIO_PIN_15 },
 	} };
+#endif
 	static watchdog watchdog_device{ watchdog_config{
 	    .instance = IWDG,
 	    .prescaler = IWDG_PRESCALER_128,
@@ -88,8 +90,10 @@ int main()
 	    .and_then([&]() -> status { return devices.add("sensor_bus", sensor_bus, component_startup::initialize); })
 	    .and_then([&]() -> status { return devices.add("sensor_transport", sensor_transport, component_startup::defer); })
 	    .and_then([&]() -> status { return devices.add("sensor", sensor, component_startup::defer); })
+#ifndef NO_STORAGE
 	    .and_then([&]() -> status { return devices.add("storage_bus", storage_bus, component_startup::initialize); })
 	    .and_then([&]() -> status { return devices.add("storage", storage, component_startup::defer); })
+#endif
 	    .and_then([&]() -> status { return devices.add("watchdog", watchdog_device, component_startup::defer); })
 		.and_then([&]() -> status { return devices.add("gps_transport", gps_transport, component_startup::initialize); })
 	    .and_then([&]() -> status { return devices.add("gps", gps_module, component_startup::defer); })
@@ -103,14 +107,24 @@ int main()
 
 	auto *console_device = devices.get<uart>("console");
 	auto *sensor_device = devices.get<bmp280>("sensor");
+#ifndef NO_STORAGE
 	auto *storage_device = devices.get<sd_card>("storage");
+#endif
 	auto *watchdog = devices.get<::watchdog>("watchdog");
-	if (!console_device || !sensor_device || !storage_device || !watchdog)
+	if (!console_device || !sensor_device || !watchdog
+#ifndef NO_STORAGE
+	    || !storage_device
+#endif
+	)
 	{
 		panic();
 	}
 
-	static track_node application{ devices, *console_device, *sensor_device, *storage_device, gps_module, radio_module, *watchdog };
+	static track_node application{ devices, *console_device, *sensor_device,
+#ifndef NO_STORAGE
+	    *storage_device,
+#endif
+	    gps_module, radio_module, *watchdog };
 	if (auto started = application.init(); !started && !application.can_signal_error())
 	{
 		panic();

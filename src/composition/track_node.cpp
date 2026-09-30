@@ -3,17 +3,26 @@
 #include "common/common.h"
 
 track_node::track_node(component_list &devices, uart &console, bmp280 &sensor,
-                       sd_card &storage, neo6m& gps, sx126x_driver& radio, watchdog &watchdog_device)
+#ifndef NO_STORAGE
+                       sd_card &storage,
+#endif
+                       neo6m &gps, sx126x_driver &radio, watchdog &watchdog_device)
 	: devices_(devices),
 	  supervisor_(watchdog_device),
 	  logger_(console, supervisor_),
+#ifndef NO_STORAGE
 	  storage_(storage, storage_service::file_config{ "logs", sample_csv_header },
 	           logger_, supervisor_),
+#endif
 	  sensor_(sensor),
 	  indicator_(logger_, supervisor_),
 	  gnss_(gps, logger_, supervisor_),
 	  radio_(radio, logger_, supervisor_),
-	  controller_(sensor_, storage_, indicator_, logger_, gnss_, radio_, supervisor_),
+	  controller_(sensor_,
+#ifndef NO_STORAGE
+	              storage_,
+#endif
+	              indicator_, logger_, gnss_, radio_, supervisor_),
 	  console_(console, controller_, logger_, supervisor_)
 {
 }
@@ -82,7 +91,9 @@ status track_node::startup()
 	}
 
 	started = logger_.start()
+#ifndef NO_STORAGE
 	              .and_then([&]() -> status { return storage_.start(); })
+#endif
 	              .and_then([&]() -> status { return indicator_.start(); })
 	              .and_then([&]() -> status { return gnss_.start(); })
 	              .and_then([&]() -> status { return radio_.start(); })
@@ -105,7 +116,9 @@ void track_node::stop_workers()
 	controller_.stop();
 	radio_.stop();
 	indicator_.stop();
+#ifndef NO_STORAGE
 	storage_.stop();
+#endif
 	gnss_.stop();
 	logger_.stop();
 }
@@ -115,7 +128,12 @@ void track_node::stop_workers()
 track_node::delivery_statistics track_node::statistics() const
 {
 	return { console_.rejected_commands(), logger_.dropped_count(),
-	         logger_.failed_writes(), storage_.snapshot().dropped_samples,
+	         logger_.failed_writes(),
+#ifndef NO_STORAGE
+	         storage_.snapshot().dropped_samples,
+#else
+	         0,
+#endif
 	         radio_.dropped_count() };
 }
 

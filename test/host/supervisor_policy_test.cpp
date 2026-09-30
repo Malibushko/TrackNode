@@ -5,6 +5,18 @@
 
 int main()
 {
+#ifdef NO_STORAGE
+	const progress_observation healthy{ service_health::ready, 9000 };
+	assert(should_refresh_watchdog(10000, 0, healthy));
+	assert(!should_refresh_watchdog(19001, 0, healthy));
+
+	const progress_observation sensor_without_samples{ service_health::degraded, 0 };
+	assert(should_refresh_watchdog(6999, 1000, sensor_without_samples));
+	assert(!should_refresh_watchdog(11001, 1000, sensor_without_samples));
+
+	const progress_observation failed{ service_health::failed, 9000 };
+	assert(!should_refresh_watchdog(10000, 0, failed));
+#else
 	const progress_observation healthy{
 	    service_health::ready, service_health::ready, 9000, 9000
 	};
@@ -45,4 +57,5 @@ int main()
 	    UINT32_MAX - 100, UINT32_MAX - 100
 	};
 	assert(should_refresh_watchdog(100, UINT32_MAX - 200, wrapped));
+#endif
 }

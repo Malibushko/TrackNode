@@ -17,7 +17,10 @@ class radio_service;
 class node_controller final : public command_sink
 {
 public:
-	node_controller(sensor_service &sensor, storage_service &storage,
+	node_controller(sensor_service &sensor,
+#ifndef NO_STORAGE
+	                storage_service &storage,
+#endif
 	                indicator_service &indicator, logger_service &logger,
 	                gnss_service &gnss, radio_service &radio, supervisor &monitor);
 
@@ -47,7 +50,9 @@ private: // Application behavior
 
 private: // State
 	sensor_service &sensor_;
+#ifndef NO_STORAGE
 	storage_service &storage_;
+#endif
 	indicator_service &indicator_;
 	logger_service &logger_;
 	gnss_service &gnss_;

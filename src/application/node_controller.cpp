@@ -1,20 +1,31 @@
 #include "application/node_controller.h"
+#ifndef NO_STORAGE
 #include "application/log_record.h"
+#endif
 
 #include "infrastructure/indicator_service.h"
 #include "infrastructure/gnss_service.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/radio_service.h"
 #include "infrastructure/sensor_service.h"
+#ifndef NO_STORAGE
 #include "infrastructure/storage_service.h"
+#endif
 #include "infrastructure/supervisor.h"
 
 #include <charconv>
 
-node_controller::node_controller(sensor_service &sensor, storage_service &storage,
+node_controller::node_controller(sensor_service &sensor,
+#ifndef NO_STORAGE
+                                 storage_service &storage,
+#endif
                                  indicator_service &indicator, logger_service &logger,
                                  gnss_service &gnss, radio_service &radio, supervisor &monitor)
-    : sensor_(sensor), storage_(storage), indicator_(indicator),
+    : sensor_(sensor),
+#ifndef NO_STORAGE
+      storage_(storage),
+#endif
+      indicator_(indicator),
       logger_(logger), gnss_(gnss), radio_(radio), monitor_(monitor)
 {
 }
@@ -181,6 +192,7 @@ void node_controller::take_sample()
 
 		const TickType_t recorded_at = xTaskGetTickCount();
 		(void)radio_.submit(*last_sample_, gnss, recorded_at);
+#ifndef NO_STORAGE
 		if (auto record = format_sample_csv(*last_sample_, gnss, recorded_at))
 		{
 			monitor_.set_health(service_id::sensor, service_health::ready);
@@ -195,6 +207,9 @@ void node_controller::take_sample()
 			monitor_.report(service_id::sensor, record.error(), service_health::degraded);
 			(void)logger_.write("Sensor sample cannot be recorded\r\n");
 		}
+#else
+		monitor_.set_health(service_id::sensor, service_health::ready);
+#endif
 	}
 	else
 	{
@@ -242,7 +257,11 @@ void node_controller::handle_command(command value)
 			break;
 
 		case command_type::reset_storage_prepare:
+#ifdef NO_STORAGE
+			(void)logger_.write("ERR STORAGE_DISABLED\r\n");
+#else
 			(void)logger_.write("WARNING ALL SD DATA WILL BE ERASED; SEND RESET STORAGE CONFIRM\r\n");
+#endif
 			break;
 
 		case command_type::reset_storage_confirm:
@@ -371,6 +390,9 @@ void node_controller::handle_read_gnss()
 
 void node_controller::handle_read_log()
 {
+#ifdef NO_STORAGE
+	(void)logger_.write("ERR STORAGE_DISABLED\r\n");
+#else
 	const auto log = storage_.snapshot();
 	if (log.health != service_health::ready)
 	{
@@ -393,6 +415,7 @@ void node_controller::handle_read_log()
 	                    log.file_name.data(), size_text,
 	                    static_cast<unsigned long>(age),
 	                    static_cast<unsigned long>(log.dropped_samples));
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -413,12 +436,16 @@ void node_controller::handle_set_sample_period(std::uint32_t period_ms)
 
 void node_controller::handle_reset_storage()
 {
+#ifdef NO_STORAGE
+	(void)logger_.write("ERR STORAGE_DISABLED\r\n");
+#else
 	if (auto queued = storage_.request_format(); !queued)
 	{
 		(void)logger_.write("ERR STORAGE_FORMAT_BUSY\r\n");
 		return;
 	}
 	(void)logger_.write("OK STORAGE_FORMAT_QUEUED\r\n");
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
