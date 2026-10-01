@@ -1,4 +1,5 @@
 #include "application/node_controller.h"
+#include "common/common.h"
 #ifndef NO_STORAGE
 #include "application/log_record.h"
 #endif
@@ -8,6 +9,7 @@
 #include "infrastructure/logger_service.h"
 #include "infrastructure/radio_service.h"
 #include "infrastructure/sensor_service.h"
+#include "infrastructure/board_state_service.h"
 #ifndef NO_STORAGE
 #include "infrastructure/storage_service.h"
 #endif
@@ -20,13 +22,14 @@ node_controller::node_controller(sensor_service &sensor,
                                  storage_service &storage,
 #endif
                                  indicator_service &indicator, logger_service &logger,
-                                 gnss_service &gnss, radio_service &radio, supervisor &monitor)
+                                 gnss_service &gnss, radio_service &radio,
+                                 board_state_service &board_state, supervisor &monitor)
     : sensor_(sensor),
 #ifndef NO_STORAGE
       storage_(storage),
 #endif
       indicator_(indicator),
-      logger_(logger), gnss_(gnss), radio_(radio), monitor_(monitor)
+      logger_(logger), gnss_(gnss), radio_(radio), board_state_(board_state), monitor_(monitor)
 {
 }
 
@@ -107,6 +110,11 @@ void node_controller::run()
 
 	for (;;)
 	{
+		if (auto sampled = board_state_.sample_if_due(common::ticks_to_ms(common::get_tick())); !sampled)
+		{
+			(void)logger_.write("Board voltage sample failed: %u\r\n",
+			                    static_cast<unsigned>(sampled.error().code));
+		}
 		const TickType_t elapsed = xTaskGetTickCount() - last_sample_at;
 		if (elapsed >= sample_period_)
 		{
@@ -270,6 +278,10 @@ void node_controller::handle_command(command value)
 
 		case command_type::reset_storage_confirm:
 			handle_reset_storage();
+			break;
+
+		case command_type::read_voltage:
+			handle_read_voltage();
 			break;
 	}
 }
@@ -458,6 +470,24 @@ void node_controller::handle_reset_storage()
 	}
 	(void)logger_.write("OK STORAGE_FORMAT_QUEUED\r\n");
 #endif
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_read_voltage()
+{
+	const auto latest = board_state_.read();
+	if (!latest)
+	{
+		(void)logger_.write("ERR VOLTAGE_UNAVAILABLE\r\n");
+		return;
+	}
+	const auto age_ms = common::ticks_to_ms(common::get_tick()) - latest->sampled_at_ms;
+	(void)logger_.write("supply_mv=%u low_voltage=%u vrefint_raw=%u age=%lu ms\r\n",
+	                    static_cast<unsigned>(latest->supply_mv),
+	                    static_cast<unsigned>(latest->low_voltage),
+	                    static_cast<unsigned>(latest->vrefint_raw),
+	                    static_cast<unsigned long>(age_ms));
 }
 
 //////////////////////////////////////////////////////////////////////////

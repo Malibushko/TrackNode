@@ -5,6 +5,7 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     indicator_service.cpp
     logger_service.cpp
     sensor_service.cpp
+    board_state_service.cpp
     supervisor.cpp
     gnss_service.cpp
 	radio_service.cpp

@@ -14,6 +14,7 @@ class logger_service;
 class supervisor;
 class gnss_service;
 class radio_service;
+class board_state_service;
 
 // The application workflow: sampling cadence, command meaning and data flow.
 class node_controller final : public command_sink
@@ -24,7 +25,8 @@ public:
 	                storage_service &storage,
 #endif
 	                indicator_service &indicator, logger_service &logger,
-	                gnss_service &gnss, radio_service &radio, supervisor &monitor);
+	                gnss_service &gnss, radio_service &radio,
+	                board_state_service &board_state, supervisor &monitor);
 
 public: // Common lifecycle
 	status start();
@@ -48,6 +50,7 @@ private: // Application behavior
 	void handle_read_log();
 	void handle_set_sample_period(std::uint32_t period_ms);
 	void handle_reset_storage();
+	void handle_read_voltage();
 	bool ensure_sample_available();
 
 	void set_power_mode(power_mode power_mode);
@@ -61,6 +64,7 @@ private: // State
 	logger_service &logger_;
 	gnss_service &gnss_;
 	radio_service &radio_;
+	board_state_service &board_state_;
 	supervisor &monitor_;
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;

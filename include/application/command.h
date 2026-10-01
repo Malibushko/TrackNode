@@ -13,6 +13,7 @@ enum class command_type : std::uint8_t
 	set_sample_period,
 	reset_storage_prepare,
 	reset_storage_confirm,
+	read_voltage,
 	error
 };
 

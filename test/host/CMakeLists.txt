@@ -5,6 +5,12 @@ target_include_directories(host_headers INTERFACE
     "${PROJECT_SOURCE_DIR}/lib/expected/include"
 )
 
+add_executable(board_state_service_test board_state_service_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/board_state_service.cpp")
+target_include_directories(board_state_service_test PRIVATE board_state_fakes)
+target_link_libraries(board_state_service_test PRIVATE host_headers)
+add_test(NAME board_state_service_test COMMAND board_state_service_test)
+
 add_executable(component_list_test component_list_test.cpp)
 target_link_libraries(component_list_test PRIVATE host_headers)
 add_test(NAME component_list_test COMMAND component_list_test)
@@ -57,6 +63,7 @@ target_link_libraries(neo6m_test PRIVATE host_headers)
 add_test(NAME neo6m_test COMMAND neo6m_test)
 
 if(MINGW)
+    target_link_options(board_state_service_test PRIVATE -static-libgcc -static-libstdc++)
     foreach(test_target component_list_test pwm_test application_test command_protocol_test supervisor_policy_test gnss_lookup_strategy_test supervisor_policy_no_storage_test log_record_test radio_packet_test nmea0183_test neo6m_test)
         target_link_options(${test_target} PRIVATE -static-libgcc -static-libstdc++)
     endforeach()

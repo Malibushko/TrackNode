@@ -5,6 +5,7 @@
 #include "infrastructure/indicator_service.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/sensor_service.h"
+#include "infrastructure/board_state_service.h"
 #ifndef NO_STORAGE
 #include "infrastructure/storage_service.h"
 #endif
@@ -54,6 +55,7 @@ private:
 	storage_service storage_;
 #endif
 	sensor_service sensor_;
+	board_state_service board_state_;
 	indicator_service indicator_;
 	gnss_service gnss_;
 	radio_service radio_;

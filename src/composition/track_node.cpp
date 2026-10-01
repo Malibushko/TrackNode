@@ -22,7 +22,7 @@ track_node::track_node(component_list &devices, uart &console, bmp280 &sensor,
 #ifndef NO_STORAGE
 	              storage_,
 #endif
-	              indicator_, logger_, gnss_, radio_, supervisor_),
+	              indicator_, logger_, gnss_, radio_, board_state_, supervisor_),
 	  console_(console, controller_, logger_, supervisor_)
 {
 }

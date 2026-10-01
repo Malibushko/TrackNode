@@ -7,21 +7,25 @@ status adc::init()
 		return fail(component::adc, error_code::already_initialized);
 	}
 
-	if (config_.channel > ADC_CHANNEL_15 || !IS_ADC_SAMPLE_TIME(config_.sample_time))
+	const bool internal_vref = config_.channel == ADC_CHANNEL_VREFINT;
+	if ((!internal_vref && config_.channel > ADC_CHANNEL_15) ||
+	    !IS_ADC_SAMPLE_TIME(config_.sample_time))
 	{
 		return fail(component::adc, error_code::invalid_config);
 	}
 
-	gpio_config pin_config{};
-	pin_config.pin = config_.pin;
-	pin_config.mode = GPIO_MODE_ANALOG;
-
-	gpio configured_pin{ pin_config };
-
-	auto status = configured_pin.init();
-	if (!status)
+	if (internal_vref && config_.sample_time != ADC_SAMPLETIME_480CYCLES)
 	{
-		return status;
+		// F411 requires >=10 us; 480 cycles satisfies this at ADC clocks <=36 MHz.
+		return fail(component::adc, error_code::invalid_config);
+	}
+	if (!internal_vref)
+	{
+		gpio_config pin_config{};
+		pin_config.pin = config_.pin;
+		pin_config.mode = GPIO_MODE_ANALOG;
+		gpio configured_pin{ pin_config };
+		if (auto configured = configured_pin.init(); !configured) return configured;
 	}
 
 	__HAL_RCC_ADC1_CLK_ENABLE();
@@ -37,7 +41,7 @@ status adc::init()
 	handle_.Init.NbrOfConversion = 1;
 	handle_.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
 
-	status = from_hal(component::adc, HAL_ADC_Init(&handle_));
+	auto status = from_hal(component::adc, HAL_ADC_Init(&handle_));
 	if (!status)
 	{
 		return status;
@@ -49,6 +53,16 @@ status adc::init()
 	channel.SamplingTime = config_.sample_time;
 
 	status = from_hal(component::adc, HAL_ADC_ConfigChannel(&handle_, &channel));
+	if (status && internal_vref)
+	{
+		// HAL enables TSVREFE for VREFINT but only delays for the temperature channel.
+		// Wait >=10 us without HAL_Delay (HAL ticks may differ under tickless idle).
+		for (std::uint32_t remaining = SystemCoreClock / 100000u + 1u;
+		     remaining != 0; --remaining)
+		{
+			__NOP();
+		}
+	}
 
 	initialized_ = static_cast<bool>(status);
 
