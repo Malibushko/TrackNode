@@ -35,7 +35,7 @@ if(CMAKE_CROSSCOMPILING)
             include/drivers/devices/sx126x.h
             include/misc/bits_helpers.h
             include/common/power_mode.h
-            include/drivers/board_state_service.h)
+    )
     add_subdirectory(src)
     include(cmake/stm32cube_sources.cmake)
     include(cmake/vendor_sources.cmake)
