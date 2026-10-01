@@ -51,6 +51,10 @@ add_executable(radio_packet_test radio_packet_test.cpp "${PROJECT_SOURCE_DIR}/sr
 target_link_libraries(radio_packet_test PRIVATE host_headers)
 add_test(NAME radio_packet_test COMMAND radio_packet_test)
 
+add_executable(radio_publish_policy_test radio_publish_policy_test.cpp)
+target_link_libraries(radio_publish_policy_test PRIVATE host_headers)
+add_test(NAME radio_publish_policy_test COMMAND radio_publish_policy_test)
+
 add_executable(nmea0183_test nmea0183_test.cpp "${PROJECT_SOURCE_DIR}/src/drivers/protocols/nmea0183.cpp")
 target_link_libraries(nmea0183_test PRIVATE host_headers)
 add_test(NAME nmea0183_test COMMAND nmea0183_test)
@@ -64,7 +68,7 @@ add_test(NAME neo6m_test COMMAND neo6m_test)
 
 if(MINGW)
     target_link_options(board_state_service_test PRIVATE -static-libgcc -static-libstdc++)
-    foreach(test_target component_list_test pwm_test application_test command_protocol_test supervisor_policy_test gnss_lookup_strategy_test supervisor_policy_no_storage_test log_record_test radio_packet_test nmea0183_test neo6m_test)
+    foreach(test_target component_list_test pwm_test application_test command_protocol_test supervisor_policy_test gnss_lookup_strategy_test supervisor_policy_no_storage_test log_record_test radio_packet_test radio_publish_policy_test nmea0183_test neo6m_test)
         target_link_options(${test_target} PRIVATE -static-libgcc -static-libstdc++)
     endforeach()
 endif()

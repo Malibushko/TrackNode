@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/radio_packet.h"
+#include "common/power_mode.h"
 #include "drivers/devices/sx126x.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/supervisor.h"
@@ -14,6 +15,7 @@ public:
 		: radio_(radio), logger_(logger), monitor_(monitor) {}
 
 	status start();
+	void set_power_mode(power_mode mode) { power_mode_.store(mode, std::memory_order_relaxed); }
 	void stop();
 	status submit(const sensor_sample &sample, const std::optional<gnss_sample> &gnss,
 	              TickType_t recorded_at);
@@ -36,4 +38,5 @@ private:
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;
 	std::atomic<std::uint32_t> dropped_{0};
+	std::atomic<power_mode> power_mode_{power_mode::high};
 };

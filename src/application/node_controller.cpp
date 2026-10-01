@@ -203,7 +203,17 @@ void node_controller::take_sample()
 		}
 
 		const TickType_t recorded_at = xTaskGetTickCount();
-		(void)radio_.submit(*last_sample_, gnss, recorded_at);
+		const auto recorded_at_ms = static_cast<std::uint32_t>(pdTICKS_TO_MS(recorded_at));
+		if (power_mode_ == power_mode::high ||
+		    radio_publish_.should_publish(last_sample_->temperature_c,
+		                                  last_sample_->pressure_pa, recorded_at_ms))
+		{
+			if (radio_.submit(*last_sample_, gnss, recorded_at))
+			{
+				radio_publish_.on_published(last_sample_->temperature_c,
+				                            last_sample_->pressure_pa, recorded_at_ms);
+			}
+		}
 #ifndef NO_STORAGE
 		if (auto record = format_sample_csv(*last_sample_, gnss, recorded_at))
 		{
@@ -319,9 +329,11 @@ bool node_controller::ensure_sample_available()
 
 //////////////////////////////////////////////////////////////////////////
 
-void node_controller::set_power_mode(power_mode power_mode)
+void node_controller::set_power_mode(power_mode mode)
 {
-	gnss_.set_power_mode(power_mode);
+	power_mode_ = mode;
+	gnss_.set_power_mode(mode);
+	radio_.set_power_mode(mode);
 }
 
 //////////////////////////////////////////////////////////////////////////

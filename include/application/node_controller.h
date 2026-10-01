@@ -2,6 +2,7 @@
 
 #include "application/command_sink.h"
 #include "application/sample.h"
+#include "application/radio_publish_policy.h"
 
 #include <optional>
 
@@ -69,8 +70,10 @@ private: // State
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;
 	std::optional<sensor_sample> last_sample_;
+	radio_publish_policy radio_publish_;
+	power_mode power_mode_{power_mode::high};
 	std::uint32_t next_sequence_ = 1;
-	TickType_t sample_period_ = pdMS_TO_TICKS(3000);
+	TickType_t sample_period_ = pdMS_TO_TICKS(1000);
 	bool sensor_initialized_ = false;
 	bool sensor_faulted_ = false;
 };

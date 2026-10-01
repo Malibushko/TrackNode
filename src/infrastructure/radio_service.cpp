@@ -82,6 +82,10 @@ void radio_service::task_entry(void *argument)
 
 void radio_service::run()
 {
+	constexpr TickType_t minimum_tx_interval = pdMS_TO_TICKS(1000);
+	TickType_t last_tx_started = 0;
+	bool has_started_tx = false;
+
 	for (;;)
 	{
 		radio_job job{};
@@ -90,9 +94,23 @@ void radio_service::run()
 			continue;
 
 		const auto packet = format_radio_packet(job.sample, job.gnss, job.recorded_at);
-		status sent = packet
-		    ? radio_.transmit(std::span<const std::uint8_t>{packet->bytes}.first(packet->length), 5000)
-		    : tl::unexpected(packet.error());
+		status sent{};
+		if (!packet)
+		{
+			sent = tl::unexpected(packet.error());
+		}
+		else
+		{
+			if (power_mode_.load(std::memory_order_relaxed) == power_mode::low && has_started_tx)
+			{
+				const TickType_t elapsed = xTaskGetTickCount() - last_tx_started;
+				if (elapsed < minimum_tx_interval)
+					vTaskDelay(minimum_tx_interval - elapsed);
+			}
+			last_tx_started = xTaskGetTickCount();
+			has_started_tx = true;
+			sent = radio_.transmit(std::span<const std::uint8_t>{packet->bytes}.first(packet->length), 5000);
+		}
 
 		if (!sent)
 		{
