@@ -104,22 +104,39 @@ tl::expected<command, command_parse_error> parse_command(std::string_view line)
 
 	if (matches(verb, "SET"))
 	{
-		if (!matches(noun, "SAMPLE_PERIOD"))
+		if (matches(noun, "SAMPLE_PERIOD"))
 		{
-			return tl::make_unexpected(command_parse_error::unknown_command);
+			const auto argument = next_token(line);
+			if (argument.empty() || !next_token(line).empty())
+			{
+				return tl::make_unexpected(command_parse_error::invalid_syntax);
+			}
+			std::uint32_t period_ms = 0;
+			const auto parsed = std::from_chars(argument.data(), argument.data() + argument.size(), period_ms);
+			if (parsed.ec != std::errc{} || parsed.ptr != argument.data() + argument.size())
+			{
+				return tl::make_unexpected(command_parse_error::invalid_number);
+			}
+
+			return command{ command_type::set_sample_period, period_ms };
 		}
-		const auto argument = next_token(line);
-		if (argument.empty() || !next_token(line).empty())
+
+		if (matches(noun, "POWER_MODE"))
 		{
+			const auto argument = next_token(line);
+			if (argument == "LOW")
+			{
+				return command{ command_type::set_power_mode, {}, power_mode::low };
+			}
+			if (argument == "HIGH")
+			{
+				return command{ command_type::set_power_mode, {}, power_mode::high };
+			}
+
 			return tl::make_unexpected(command_parse_error::invalid_syntax);
 		}
-		std::uint32_t period_ms = 0;
-		const auto parsed = std::from_chars(argument.data(), argument.data() + argument.size(), period_ms);
-		if (parsed.ec != std::errc{} || parsed.ptr != argument.data() + argument.size())
-		{
-			return tl::make_unexpected(command_parse_error::invalid_number);
-		}
-		return command{ command_type::set_sample_period, period_ms };
+
+		return tl::make_unexpected(command_parse_error::unknown_command);
 	}
 
 	if (matches(verb, "RESET"))

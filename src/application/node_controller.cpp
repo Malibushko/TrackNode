@@ -293,6 +293,10 @@ void node_controller::handle_command(command value)
 		case command_type::read_voltage:
 			handle_read_voltage();
 			break;
+
+		case command_type::set_power_mode:
+			handle_set_power_mode(value.power_mode_);
+			break;
 	}
 }
 
@@ -500,6 +504,14 @@ void node_controller::handle_read_voltage()
 	                    static_cast<unsigned>(latest->low_voltage),
 	                    static_cast<unsigned>(latest->vrefint_raw),
 	                    static_cast<unsigned long>(age_ms));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_set_power_mode(power_mode power_mode)
+{
+	set_power_mode(power_mode);
+	(void)logger_.write("power mode changed to: %s\r\n", power_mode == power_mode::high ? "high" : "low");
 }
 
 //////////////////////////////////////////////////////////////////////////
