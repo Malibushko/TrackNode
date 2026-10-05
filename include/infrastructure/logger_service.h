@@ -1,6 +1,7 @@
 #pragma once
 
 #include "infrastructure/supervisor.h"
+#include "application/command_reply.h"
 #include "drivers/uart.h"
 
 #include <atomic>
@@ -8,7 +9,7 @@
 #include <cstddef>
 #include <coroutine>
 
-class logger_service
+class logger_service final : public command_reply_sink
 {
 public:
 	logger_service(uart &output, supervisor &monitor) : output_(output), monitor_(monitor) {}
@@ -19,6 +20,7 @@ public: // Common lifecycle
 
 public: // Logger API
 	status write(const char *format, ...);
+	status submit_reply(const command_reply &reply) override;
 
 	[[nodiscard]] std::uint32_t dropped_count() const { return dropped_.load(); }
 	[[nodiscard]] std::uint32_t failed_writes() const { return failed_writes_.load(); }

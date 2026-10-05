@@ -7,7 +7,6 @@
 #include "infrastructure/indicator_service.h"
 #include "infrastructure/gnss_service.h"
 #include "infrastructure/logger_service.h"
-#include "infrastructure/radio_service.h"
 #include "infrastructure/sensor_service.h"
 #include "infrastructure/board_state_service.h"
 #ifndef NO_STORAGE
@@ -22,14 +21,14 @@ node_controller::node_controller(sensor_service &sensor,
                                  storage_service &storage,
 #endif
                                  indicator_service &indicator, logger_service &logger,
-                                 gnss_service &gnss, radio_service &radio,
+                                 gnss_service &gnss, telemetry_sink &telemetry,
                                  board_state_service &board_state, supervisor &monitor)
     : sensor_(sensor),
 #ifndef NO_STORAGE
       storage_(storage),
 #endif
       indicator_(indicator),
-      logger_(logger), gnss_(gnss), radio_(radio), board_state_(board_state), monitor_(monitor)
+      logger_(logger), gnss_(gnss), telemetry_(telemetry), board_state_(board_state), monitor_(monitor)
 {
 }
 
@@ -41,7 +40,7 @@ status node_controller::start()
 	{
 		return fail(component::rtos, error_code::already_initialized);
 	}
-	inbox_ = xQueueCreate(8, sizeof(command));
+	inbox_ = xQueueCreate(8, sizeof(command_request));
 	if (!inbox_)
 	{
 		return fail(component::rtos, error_code::out_of_memory);
@@ -76,7 +75,7 @@ void node_controller::stop()
 
 //////////////////////////////////////////////////////////////////////////
 
-status node_controller::submit(command value)
+status node_controller::submit(command_request value)
 {
 	if (!inbox_)
 	{
@@ -122,7 +121,7 @@ void node_controller::run()
 			last_sample_at = xTaskGetTickCount();
 			continue;
 		}
-		command received{};
+		command_request received{};
 		const TickType_t until_sample = sample_period_ - elapsed;
 		const TickType_t wait = until_sample < heartbeat_period ? until_sample : heartbeat_period;
 		if (xQueueReceive(inbox_, &received, wait) == pdPASS)
@@ -203,17 +202,7 @@ void node_controller::take_sample()
 		}
 
 		const TickType_t recorded_at = xTaskGetTickCount();
-		const auto recorded_at_ms = static_cast<std::uint32_t>(pdTICKS_TO_MS(recorded_at));
-		if (power_mode_ == power_mode::high ||
-		    radio_publish_.should_publish(last_sample_->temperature_c,
-		                                  last_sample_->pressure_pa, recorded_at_ms))
-		{
-			if (radio_.submit(*last_sample_, gnss, recorded_at))
-			{
-				radio_publish_.on_published(last_sample_->temperature_c,
-				                            last_sample_->pressure_pa, recorded_at_ms);
-			}
-		}
+		(void)telemetry_.submit(telemetry_sample{*last_sample_, gnss, recorded_at});
 #ifndef NO_STORAGE
 		if (auto record = format_sample_csv(*last_sample_, gnss, recorded_at))
 		{
@@ -250,8 +239,21 @@ void node_controller::take_sample()
 
 //////////////////////////////////////////////////////////////////////////
 
-void node_controller::handle_command(command value)
+status node_controller::reply(const char *format, ...)
 {
+	std::va_list arguments;
+	va_start(arguments, format);
+	auto accepted = write_command_reply(active_request_, logger_, format, arguments);
+	va_end(arguments);
+	return accepted;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_command(command_request request)
+{
+	active_request_ = request;
+	const auto value = request.value;
 	switch (value.type)
 	{
 		case command_type::ping:
@@ -280,9 +282,9 @@ void node_controller::handle_command(command value)
 
 		case command_type::reset_storage_prepare:
 #ifdef NO_STORAGE
-			(void)logger_.write("ERR STORAGE_DISABLED\r\n");
+			(void)reply("ERR STORAGE_DISABLED\r\n");
 #else
-			(void)logger_.write("WARNING ALL SD DATA WILL BE ERASED; SEND RESET STORAGE CONFIRM\r\n");
+			(void)reply("WARNING ALL SD DATA WILL BE ERASED; SEND RESET STORAGE CONFIRM\r\n");
 #endif
 			break;
 
@@ -306,7 +308,7 @@ void node_controller::handle_ping()
 {
 	if (auto accepted = indicator_.ping(); !accepted)
 	{
-		(void)logger_.write("Indicator queue full\r\n");
+		(void)reply("Indicator queue full\r\n");
 	}
 }
 
@@ -316,14 +318,14 @@ bool node_controller::ensure_sample_available()
 {
 	if (!last_sample_)
 	{
-		(void)logger_.write("Sensor sample unavailable (no measurement)\r\n");
+		(void)reply("Sensor sample unavailable (no measurement)\r\n");
 		return false;
 	}
 
 	if (!last_sample_->valid)
 	{
 		const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_->timestamp);
-		(void)logger_.write("Sensor sample invalid (last age=%lu ms, seq=%lu)\r\n",
+		(void)reply("Sensor sample invalid (last age=%lu ms, seq=%lu)\r\n",
 		                    static_cast<unsigned long>(age),
 		                    static_cast<unsigned long>(last_sample_->sequence));
 		return false;
@@ -335,9 +337,8 @@ bool node_controller::ensure_sample_available()
 
 void node_controller::set_power_mode(power_mode mode)
 {
-	power_mode_ = mode;
 	gnss_.set_power_mode(mode);
-	radio_.set_power_mode(mode);
+	telemetry_.set_power_mode(mode);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -350,7 +351,7 @@ void node_controller::handle_read_temperature()
 	}
 
 	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_->timestamp);
-	(void)logger_.write("Temperature = %.2f C (age=%lu ms, seq=%lu)\r\n",
+	(void)reply("Temperature = %.2f C (age=%lu ms, seq=%lu)\r\n",
 	                    static_cast<double>(last_sample_->temperature_c),
 	                    static_cast<unsigned long>(age),
 	                    static_cast<unsigned long>(last_sample_->sequence));
@@ -366,7 +367,7 @@ void node_controller::handle_read_pressure()
 	}
 
 	const auto age = pdTICKS_TO_MS(xTaskGetTickCount() - last_sample_->timestamp);
-	(void)logger_.write("Pressure = %.2f Pa (age=%lu ms, seq=%lu)\r\n",
+	(void)reply("Pressure = %.2f Pa (age=%lu ms, seq=%lu)\r\n",
 	                    static_cast<double>(last_sample_->pressure_pa),
 	                    static_cast<unsigned long>(age),
 	                    static_cast<unsigned long>(last_sample_->sequence));
@@ -380,7 +381,7 @@ void node_controller::handle_read_gnss()
 	const auto latest = gnss_.read();
 	if (!latest)
 	{
-		(void)logger_.write("GNSS snapshot unavailable\r\n");
+		(void)reply("GNSS snapshot unavailable\r\n");
 		return;
 	}
 
@@ -389,7 +390,7 @@ void node_controller::handle_read_gnss()
 	                                     latest->sequence);
 	if (converted.ec != std::errc{})
 	{
-		(void)logger_.write("ERR GNSS_FORMAT\r\n");
+		(void)reply("ERR GNSS_FORMAT\r\n");
 		return;
 	}
 	*converted.ptr = '\0';
@@ -399,7 +400,7 @@ void node_controller::handle_read_gnss()
 	const bool position_valid = fresh && latest->position_valid;
 	const bool speed_valid = fresh && latest->speed_valid;
 	const bool time_valid = fresh && latest->time_valid;
-	(void)logger_.write("GNSS seq=%s age=%lu ms pos=%u speed=%u time_field=%u\r\n",
+	(void)reply("GNSS seq=%s age=%lu ms pos=%u speed=%u time_field=%u\r\n",
 	                    sequence, static_cast<unsigned long>(age_ms),
 	                    static_cast<unsigned>(position_valid),
 	                    static_cast<unsigned>(speed_valid),
@@ -407,11 +408,11 @@ void node_controller::handle_read_gnss()
 
 	if (position_valid)
 	{
-		(void)logger_.write("GNSS lat=%.6f lon=%.6f\r\n", latest->latitude, latest->longitude);
+		(void)reply("GNSS lat=%.6f lon=%.6f\r\n", latest->latitude, latest->longitude);
 	}
 	if (speed_valid)
 	{
-		(void)logger_.write("GNSS speed=%.2f m/s\r\n", static_cast<double>(latest->speed_mps));
+		(void)reply("GNSS speed=%.2f m/s\r\n", static_cast<double>(latest->speed_mps));
 	}
 	if (time_valid)
 	{
@@ -421,7 +422,7 @@ void node_controller::handle_read_gnss()
 		if (time_converted.ec == std::errc{})
 		{
 			*time_converted.ptr = '\0';
-			(void)logger_.write("GNSS utc_unix_s=%s\r\n", utc_time);
+			(void)reply("GNSS utc_unix_s=%s\r\n", utc_time);
 		}
 	}
 }
@@ -431,12 +432,12 @@ void node_controller::handle_read_gnss()
 void node_controller::handle_read_log()
 {
 #ifdef NO_STORAGE
-	(void)logger_.write("ERR STORAGE_DISABLED\r\n");
+	(void)reply("ERR STORAGE_DISABLED\r\n");
 #else
 	const auto log = storage_.snapshot();
 	if (log.health != service_health::ready)
 	{
-		(void)logger_.write("Storage unavailable (dropped=%lu)\r\n",
+		(void)reply("Storage unavailable (dropped=%lu)\r\n",
 		                    static_cast<unsigned long>(log.dropped_samples));
 		return;
 	}
@@ -447,11 +448,11 @@ void node_controller::handle_read_log()
 	                                     log.log_size);
 	if (converted.ec != std::errc{})
 	{
-		(void)logger_.write("Log size unavailable\r\n");
+		(void)reply("Log size unavailable\r\n");
 		return;
 	}
 	*converted.ptr = '\0';
-	(void)logger_.write("Log %s: %s bytes (age=%lu ms, dropped=%lu)\r\n",
+	(void)reply("Log %s: %s bytes (age=%lu ms, dropped=%lu)\r\n",
 	                    log.file_name.data(), size_text,
 	                    static_cast<unsigned long>(age),
 	                    static_cast<unsigned long>(log.dropped_samples));
@@ -464,12 +465,12 @@ void node_controller::handle_set_sample_period(std::uint32_t period_ms)
 {
 	if (period_ms < 100 || period_ms > 60000)
 	{
-		(void)logger_.write("ERR SAMPLE_PERIOD_RANGE 100..60000\r\n");
+		(void)reply("ERR SAMPLE_PERIOD_RANGE 100..60000\r\n");
 		return;
 	}
 
 	sample_period_ = pdMS_TO_TICKS(period_ms);
-	(void)logger_.write("OK SAMPLE_PERIOD %lu\r\n", static_cast<unsigned long>(period_ms));
+	(void)reply("OK SAMPLE_PERIOD %lu\r\n", static_cast<unsigned long>(period_ms));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -477,14 +478,14 @@ void node_controller::handle_set_sample_period(std::uint32_t period_ms)
 void node_controller::handle_reset_storage()
 {
 #ifdef NO_STORAGE
-	(void)logger_.write("ERR STORAGE_DISABLED\r\n");
+	(void)reply("ERR STORAGE_DISABLED\r\n");
 #else
 	if (auto queued = storage_.request_format(); !queued)
 	{
-		(void)logger_.write("ERR STORAGE_FORMAT_BUSY\r\n");
+		(void)reply("ERR STORAGE_FORMAT_BUSY\r\n");
 		return;
 	}
-	(void)logger_.write("OK STORAGE_FORMAT_QUEUED\r\n");
+	(void)reply("OK STORAGE_FORMAT_QUEUED\r\n");
 #endif
 }
 
@@ -495,11 +496,11 @@ void node_controller::handle_read_voltage()
 	const auto latest = board_state_.read();
 	if (!latest)
 	{
-		(void)logger_.write("ERR VOLTAGE_UNAVAILABLE\r\n");
+		(void)reply("ERR VOLTAGE_UNAVAILABLE\r\n");
 		return;
 	}
 	const auto age_ms = common::ticks_to_ms(common::get_tick()) - latest->sampled_at_ms;
-	(void)logger_.write("supply_mv=%u low_voltage=%u vrefint_raw=%u age=%lu ms\r\n",
+	(void)reply("supply_mv=%u low_voltage=%u vrefint_raw=%u age=%lu ms\r\n",
 	                    static_cast<unsigned>(latest->supply_mv),
 	                    static_cast<unsigned>(latest->low_voltage),
 	                    static_cast<unsigned>(latest->vrefint_raw),
@@ -511,7 +512,7 @@ void node_controller::handle_read_voltage()
 void node_controller::handle_set_power_mode(power_mode power_mode)
 {
 	set_power_mode(power_mode);
-	(void)logger_.write("power mode changed to: %s\r\n", power_mode == power_mode::high ? "high" : "low");
+	(void)reply("power mode changed to: %s\r\n", power_mode == power_mode::high ? "high" : "low");
 }
 
 //////////////////////////////////////////////////////////////////////////

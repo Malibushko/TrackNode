@@ -5,6 +5,12 @@
 
 int main()
 {
+	progress_observation disabled{};
+	disabled.sensor_health = service_health::disabled;
+#ifndef NO_STORAGE
+	disabled.storage_health = service_health::disabled;
+#endif
+	assert(should_refresh_watchdog(1000000, 0, disabled));
 #ifdef NO_STORAGE
 	const progress_observation healthy{ service_health::ready, 9000 };
 	assert(should_refresh_watchdog(10000, 0, healthy));

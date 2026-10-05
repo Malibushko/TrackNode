@@ -4,6 +4,14 @@
 #include <cstdio>
 #include <cstring>
 
+status logger_service::submit_reply(const command_reply &reply)
+{
+	if (reply.text.back() != '\0') return fail(component::service, error_code::invalid_argument);
+	return write("%s", reply.text.data());
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 logger_service::tx_operation logger_service::tx_operation::promise_type::get_return_object()
 {
 	return tx_operation{ std::coroutine_handle<promise_type>::from_promise(*this) };

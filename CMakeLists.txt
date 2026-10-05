@@ -9,6 +9,8 @@ option(FAULT_INJECTION_ENABLE "Inject random faults to simulate real world condi
 option(PERF_MEASURING "Log scoped execution times" OFF)
 option(TRACK_NODE_TICKLESS_IDLE "Try FreeRTOS tickless idle in the full firmware" OFF)
 option(TRACK_NODE_DEBUG_IN_SLEEP "Keep the STM32 debug interface active during Sleep" OFF)
+option(TRACK_NODE_ENABLE_LORA "Include SX126x transport" ON)
+option(TRACK_NODE_ENABLE_BLUETOOTH "Include unfinished Bluetooth scaffold" OFF)
 option(NO_STORAGE "Build TrackNode without SD card and filesystem" OFF)
 
 if(CMAKE_CROSSCOMPILING)
@@ -67,6 +69,10 @@ if(CMAKE_CROSSCOMPILING)
     if(TRACK_NODE_DEBUG_IN_SLEEP)
         target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE TRACK_NODE_DEBUG_IN_SLEEP=1)
     endif()
+
+    target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE
+        TRACK_NODE_ENABLE_LORA=$<BOOL:${TRACK_NODE_ENABLE_LORA}>
+        TRACK_NODE_ENABLE_BLUETOOTH=$<BOOL:${TRACK_NODE_ENABLE_BLUETOOTH}>)
 
     if(NO_STORAGE)
         target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE NO_STORAGE=1)

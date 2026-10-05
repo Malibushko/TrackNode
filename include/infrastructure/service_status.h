@@ -25,11 +25,13 @@ enum class service_id : std::uint8_t
 	watchdog,
 	gnss,
 	radio,
+	bluetooth,
 	count
 };
 
 enum class service_health : std::uint8_t
 {
+	disabled,
 	starting,
 	ready,
 	degraded,

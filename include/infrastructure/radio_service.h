@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/radio_packet.h"
+#include "application/telemetry_sink.h"
 #include "common/power_mode.h"
 #include "drivers/devices/sx126x.h"
 #include "infrastructure/logger_service.h"
@@ -8,15 +9,17 @@
 
 #include <atomic>
 
-class radio_service
+class radio_service final : public telemetry_sink
 {
 public:
 	radio_service(sx126x_driver &radio, logger_service &logger, supervisor &monitor)
 		: radio_(radio), logger_(logger), monitor_(monitor) {}
 
 	status start();
-	void set_power_mode(power_mode mode) { power_mode_.store(mode, std::memory_order_relaxed); }
+	void set_power_mode(power_mode mode) override { power_mode_.store(mode, std::memory_order_relaxed); }
 	void stop();
+	status submit(const telemetry_sample &sample) override
+	{ return submit(sample.sensor, sample.gnss, sample.recorded_at); }
 	status submit(const sensor_sample &sample, const std::optional<gnss_sample> &gnss,
 	              TickType_t recorded_at);
 	[[nodiscard]] std::uint32_t dropped_count() const { return dropped_.load(std::memory_order_relaxed); }

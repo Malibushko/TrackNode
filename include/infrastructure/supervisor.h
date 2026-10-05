@@ -19,6 +19,7 @@ public: // Common lifecycle
 	void stop();
 
 public: // Supervisor API
+	void configure(std::uint32_t enabled_mask);
 	void set_health(service_id id, service_health health);
 	void report(service_id id, error failure, service_health health);
 	void report_startup(error failure);

@@ -2,8 +2,24 @@
 #include "board/clock.h"
 #include "core/component_list.h"
 #include "drivers/devices/neo6m.h"
-#include "drivers/devices/sx126x.h"
 #include "platform/error.h"
+#include "application/node_controller.h"
+#include "application/telemetry_router.h"
+#include "infrastructure/console_service.h"
+#include "infrastructure/sensor_service.h"
+#include "infrastructure/board_state_service.h"
+#include "infrastructure/gnss_service.h"
+#if TRACK_NODE_ENABLE_LORA
+#include "drivers/devices/sx126x.h"
+#include "infrastructure/radio_service.h"
+#endif
+#if TRACK_NODE_ENABLE_BLUETOOTH
+#include "drivers/devices/xiao_ble_bridge.h"
+#include "infrastructure/bluetooth_service.h"
+#endif
+#ifndef NO_STORAGE
+#include "infrastructure/storage_service.h"
+#endif
 
 int main()
 {
@@ -58,6 +74,7 @@ int main()
 		.mode = UART_MODE_TX_RX,
 	} };
 
+#if TRACK_NODE_ENABLE_LORA
 	static spi_bus radio_bus = spi_bus { spi_bus_config {
 		.instance = SPI2,
 		.baud_rate_prescaler = SPI_BAUDRATEPRESCALER_8,
@@ -86,6 +103,8 @@ int main()
 		.tx_power_dbm = 10
 	}};
 
+#endif
+
 	static neo6m gps_module { gps_transport };
 
 	static component_list devices;
@@ -100,34 +119,79 @@ int main()
 	    .and_then([&]() -> status { return devices.add("watchdog", watchdog_device, component_startup::defer); })
 		.and_then([&]() -> status { return devices.add("gps_transport", gps_transport, component_startup::initialize); })
 	    .and_then([&]() -> status { return devices.add("gps", gps_module, component_startup::defer); })
+#if TRACK_NODE_ENABLE_LORA
 		.and_then([&]() -> status { return devices.add("radio_bus", radio_bus, component_startup::initialize);})
-		.and_then([&]() -> status { return devices.add("radio", radio_module, component_startup::defer);});
+		.and_then([&]() -> status { return devices.add("radio", radio_module, component_startup::defer);})
+#endif
+	;
 
 	if (!registered)
 	{
 		panic();
 	}
 
-	auto *console_device = devices.get<uart>("console");
-	auto *sensor_device = devices.get<bmp280>("sensor");
+	// Services own their queues/tasks; main owns all service lifetimes.
+	static supervisor monitor{watchdog_device};
+	static logger_service logger{console, monitor};
+	static sensor_service measurements{sensor};
+	static board_state_service board_state;
+	static indicator_service indicator{logger, monitor};
+	static gnss_service gnss{gps_module, logger, monitor};
 #ifndef NO_STORAGE
-	auto *storage_device = devices.get<sd_card>("storage");
+	static storage_service records{storage, storage_service::file_config{"logs", sample_csv_header}, logger, monitor};
 #endif
-	auto *watchdog = devices.get<::watchdog>("watchdog");
-	if (!console_device || !sensor_device || !watchdog
+	static telemetry_router telemetry;
+	static node_controller controller{measurements,
 #ifndef NO_STORAGE
-	    || !storage_device
+	    records,
 #endif
-	)
-	{
-		panic();
-	}
+	    indicator, logger, gnss, telemetry, board_state, monitor};
+	static console_service commands{console, controller, logger, monitor};
+	static track_node application{devices, monitor, indicator};
 
-	static track_node application{ devices, *console_device, *sensor_device,
+	auto configured = application.add(service_id::logger, logger)
+	    .and_then([&]() { return application.add(service_id::indicator, indicator, {service_id::logger}); })
+	    .and_then([&]() { return application.add(service_id::gnss, gnss, {service_id::logger}); })
 #ifndef NO_STORAGE
-	    *storage_device,
+	    .and_then([&]() { return application.add(service_id::storage, records, {service_id::logger}); })
 #endif
-	    gps_module, radio_module, *watchdog };
+	;
+
+#if TRACK_NODE_ENABLE_LORA
+	static radio_service radio{radio_module, logger, monitor};
+	configured = configured
+	    .and_then([&]() { return telemetry.add(radio, telemetry_policy::on_change_in_low_power); })
+	    .and_then([&]() { return application.add(service_id::radio, radio, {service_id::logger}); });
+#endif
+#if TRACK_NODE_ENABLE_BLUETOOTH
+	// TODO(user): choose a free UART and pins. Console/GPS ports cannot be shared.
+	// This deliberately invalid configuration is never initialized by the scaffold.
+	static uart ble_uart{uart_config{.instance = nullptr, .alternate = 0,
+	    .baud_rate = 115200, .mode = UART_MODE_TX_RX}};
+	static xiao_ble_bridge ble_backend{ble_uart};
+	static bluetooth_service bluetooth{ble_backend, controller, logger, monitor};
+	configured = configured
+	    .and_then([&]() { return telemetry.add(bluetooth); })
+	    .and_then([&]() { return application.add(service_id::bluetooth, bluetooth, {service_id::logger}); });
+#endif
+	telemetry.seal();
+	configured = configured
+	    .and_then([&]() { return application.add(service_id::sensor, controller,
+	        {service_id::logger, service_id::indicator, service_id::gnss,
+#ifndef NO_STORAGE
+	         service_id::storage,
+#endif
+#if TRACK_NODE_ENABLE_LORA
+	         service_id::radio,
+#endif
+#if TRACK_NODE_ENABLE_BLUETOOTH
+	         service_id::bluetooth,
+#endif
+	        }); })
+	    .and_then([&]() { return application.add(service_id::console, commands, {service_id::sensor}); })
+	    .and_then([&]() { return application.add(service_id::watchdog, monitor, {service_id::console}); });
+	if (!configured) panic();
+
 	if (auto started = application.init(); !started && !application.can_signal_error())
 	{
 		panic();

@@ -1,6 +1,17 @@
 #include "infrastructure/supervisor.h"
 #include "infrastructure/progress_policy.h"
 
+void supervisor::configure(std::uint32_t enabled_mask)
+{
+	// Called once by composition before any worker is started.
+	for (std::size_t i = 0; i < service_count; ++i)
+		health_[i].store((enabled_mask & (std::uint32_t{1} << i))
+		    ? service_health::starting : service_health::disabled, std::memory_order_relaxed);
+	recompute_state();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status supervisor::start()
 {
 	if (task_)

@@ -8,8 +8,14 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     board_state_service.cpp
     supervisor.cpp
     gnss_service.cpp
-	radio_service.cpp
 )
+
+if(TRACK_NODE_ENABLE_LORA)
+    target_sources(${TRACK_NODE_TARGET} PRIVATE radio_service.cpp)
+endif()
+if(TRACK_NODE_ENABLE_BLUETOOTH)
+    target_sources(${TRACK_NODE_TARGET} PRIVATE bluetooth_service.cpp)
+endif()
 
 if(NOT NO_STORAGE)
     target_sources(${TRACK_NODE_TARGET} PRIVATE storage_service.cpp)

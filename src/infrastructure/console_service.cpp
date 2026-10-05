@@ -69,7 +69,7 @@ void console_service::handle_event(protocol_event event)
 			break;
 
 		case protocol_event_type::command:
-			if (auto accepted = commands_.submit(event.value); !accepted)
+			if (auto accepted = commands_.submit(command_request{event.value, &logger_}); !accepted)
 			{
 				rejected_.fetch_add(1);
 				(void)logger_.write("ERR COMMAND_QUEUE_FULL\r\n");

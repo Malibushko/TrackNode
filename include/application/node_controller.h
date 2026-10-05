@@ -2,7 +2,7 @@
 
 #include "application/command_sink.h"
 #include "application/sample.h"
-#include "application/radio_publish_policy.h"
+#include "application/telemetry_sink.h"
 
 #include <optional>
 
@@ -14,7 +14,6 @@ class indicator_service;
 class logger_service;
 class supervisor;
 class gnss_service;
-class radio_service;
 class board_state_service;
 
 // The application workflow: sampling cadence, command meaning and data flow.
@@ -26,7 +25,7 @@ public:
 	                storage_service &storage,
 #endif
 	                indicator_service &indicator, logger_service &logger,
-	                gnss_service &gnss, radio_service &radio,
+	                gnss_service &gnss, telemetry_sink &telemetry,
 	                board_state_service &board_state, supervisor &monitor);
 
 public: // Common lifecycle
@@ -34,7 +33,8 @@ public: // Common lifecycle
 	void stop();
 
 public: // Application API
-	status submit(command value) override;
+	using command_sink::submit;
+	status submit(command_request request) override;
 
 private: // Common task loop
 	static void task_entry(void *argument);
@@ -43,7 +43,8 @@ private: // Common task loop
 
 private: // Application behavior
 	void take_sample();
-	void handle_command(command value);
+	void handle_command(command_request request);
+	status reply(const char *format, ...);
 	void handle_ping();
 	void handle_read_temperature();
 	void handle_read_pressure();
@@ -65,14 +66,13 @@ private: // State
 	indicator_service &indicator_;
 	logger_service &logger_;
 	gnss_service &gnss_;
-	radio_service &radio_;
+	telemetry_sink &telemetry_;
 	board_state_service &board_state_;
 	supervisor &monitor_;
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;
 	std::optional<sensor_sample> last_sample_;
-	radio_publish_policy radio_publish_;
-	power_mode power_mode_{power_mode::high};
+	command_request active_request_{};
 	std::uint32_t next_sequence_ = 1;
 	TickType_t sample_period_ = pdMS_TO_TICKS(1000);
 	bool sensor_initialized_ = false;

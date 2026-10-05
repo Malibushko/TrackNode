@@ -23,15 +23,17 @@ inline bool should_refresh_watchdog(TickType_t now, TickType_t started,
 #endif
 	const TickType_t sensor_reference = observed.sensor_tick == 0 ? started : observed.sensor_tick;
 
-	const bool sensor_live = observed.sensor_health != service_health::failed &&
+	const bool sensor_live = observed.sensor_health == service_health::disabled ||
+	                         (observed.sensor_health != service_health::failed &&
 	                         (observed.sensor_health == service_health::starting
 	                              ? now - started < progress_timeout
-	                              : now - sensor_reference <= progress_timeout);
+	                              : now - sensor_reference <= progress_timeout));
 #ifndef NO_STORAGE
-	const bool storage_live = observed.storage_health != service_health::failed &&
+	const bool storage_live = observed.storage_health == service_health::disabled ||
+	                          (observed.storage_health != service_health::failed &&
 	                          (observed.storage_health == service_health::starting
 	                               ? now - started < storage_start_timeout
-	                               : now - observed.storage_tick <= progress_timeout);
+	                               : now - observed.storage_tick <= progress_timeout));
 	return sensor_live && storage_live;
 #else
 	return sensor_live;

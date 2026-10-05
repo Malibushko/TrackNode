@@ -67,18 +67,71 @@
         "FAULT_INJECTION_ENABLE": "ON",
         "PERF_MEASURING": "ON"
       }
+    },
+    {
+      "name": "f411-no-radio",
+      "inherits": "f411-no-storage",
+      "binaryDir": "${sourceDir}/build/f411-no-radio",
+      "cacheVariables": {
+        "TRACK_NODE_ENABLE_LORA": "OFF",
+        "TRACK_NODE_ENABLE_BLUETOOTH": "OFF"
+      }
+    },
+    {
+      "name": "f411-ble-scaffold",
+      "inherits": "f411-no-storage",
+      "binaryDir": "${sourceDir}/build/f411-ble-scaffold",
+      "cacheVariables": {
+        "TRACK_NODE_ENABLE_LORA": "OFF",
+        "TRACK_NODE_ENABLE_BLUETOOTH": "ON"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "host", "configurePreset": "host" },
-    { "name": "f411", "configurePreset": "f411" },
-    { "name": "f411-no-storage", "configurePreset": "f411-no-storage" },
-    { "name": "f411-tickless-no-storage", "configurePreset": "f411-tickless-no-storage" },
-    { "name": "f411-tickless-debug-no-storage", "configurePreset": "f411-tickless-debug-no-storage" },
-    { "name": "f411-tickless", "configurePreset": "f411-tickless" },
-    { "name": "f411-fault", "configurePreset": "f411-fault" }
+    {
+      "name": "host",
+      "configurePreset": "host"
+    },
+    {
+      "name": "f411",
+      "configurePreset": "f411"
+    },
+    {
+      "name": "f411-no-storage",
+      "configurePreset": "f411-no-storage"
+    },
+    {
+      "name": "f411-tickless-no-storage",
+      "configurePreset": "f411-tickless-no-storage"
+    },
+    {
+      "name": "f411-tickless-debug-no-storage",
+      "configurePreset": "f411-tickless-debug-no-storage"
+    },
+    {
+      "name": "f411-tickless",
+      "configurePreset": "f411-tickless"
+    },
+    {
+      "name": "f411-fault",
+      "configurePreset": "f411-fault"
+    },
+    {
+      "name": "f411-no-radio",
+      "configurePreset": "f411-no-radio"
+    },
+    {
+      "name": "f411-ble-scaffold",
+      "configurePreset": "f411-ble-scaffold"
+    }
   ],
   "testPresets": [
-    { "name": "host", "configurePreset": "host", "output": { "outputOnFailure": true } }
+    {
+      "name": "host",
+      "configurePreset": "host",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
   ]
 }
