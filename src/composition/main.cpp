@@ -127,18 +127,11 @@ status configure_sensors(firmware_composition &application)
 	}};
 
 	static i2c_device transport{bus, 0x76};
-
 	static bmp280 sensor{transport, bmp280::config{}};
 
 	auto added = application.devices.add("sensor_bus", bus, component_startup::initialize)
-	    .and_then([&]
-	{
-		return application.devices.add("sensor_transport", transport, component_startup::defer);
-	})
-	    .and_then([&]
-	{
-		return application.devices.add("sensor", sensor, component_startup::defer);
-	});
+	    .and_then([&]{ return application.devices.add("sensor_transport", transport, component_startup::defer); })
+	    .and_then([&]{ return application.devices.add("sensor", sensor, component_startup::defer); });
 
 	if (!added)
 	{
@@ -146,7 +139,6 @@ status configure_sensors(firmware_composition &application)
 	}
 
 	static sensor_service measurements{sensor};
-
 	application.measurements = &measurements;
 
 	return {};
@@ -190,10 +182,7 @@ status configure_gnss(firmware_composition &application)
 	static neo6m device{transport};
 
 	auto added = application.devices.add("gps_transport", transport, component_startup::initialize)
-	    .and_then([&]
-	{
-		return application.devices.add("gps", device, component_startup::defer);
-	});
+	    .and_then([&]{ return application.devices.add("gps", device, component_startup::defer); });
 
 	if (!added)
 	{
@@ -233,10 +222,7 @@ status configure_storage(firmware_composition &application)
 	}};
 
 	auto added = application.devices.add("storage_bus", bus, component_startup::initialize)
-	    .and_then([&]
-	{
-		return application.devices.add("storage", card, component_startup::defer);
-	});
+	    .and_then([&]{ return application.devices.add("storage", card, component_startup::defer); });
 
 	if (!added)
 	{
@@ -299,10 +285,7 @@ status configure_radio(firmware_composition &application)
 	}};
 
 	auto added = application.devices.add("radio_bus", bus, component_startup::initialize)
-	    .and_then([&]
-	{
-		return application.devices.add("radio", device, component_startup::defer);
-	});
+	    .and_then([&]{ return application.devices.add("radio", device, component_startup::defer); });
 
 	if (!added)
 	{
@@ -310,14 +293,10 @@ status configure_radio(firmware_composition &application)
 	}
 
 	static radio_service radio{device, *application.logger, *application.monitor};
-
 	static radio_telemetry_filter filtered_radio{radio};
 
 	return application.services.add(service_id::radio, radio, {service_id::logger})
-	    .and_then([&]
-	{
-		return application.telemetry.add(filtered_radio);
-	});
+	    .and_then([&]{ return application.telemetry.add(filtered_radio); });
 #else
 	(void)application;
 
@@ -345,10 +324,7 @@ status configure_bluetooth(firmware_composition &application)
 	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor};
 
 	return application.services.add(service_id::bluetooth, bluetooth, {service_id::logger})
-	    .and_then([&]
-	{
-		return application.telemetry.add(bluetooth);
-	});
+	    .and_then([&]{ return application.telemetry.add(bluetooth); });
 #else
 	(void)application;
 
@@ -371,7 +347,6 @@ status configure_controller(firmware_composition &application)
 #endif
 
 	static board_state_service board_state;
-
 	static node_controller controller{*application.measurements,
 #ifndef NO_STORAGE
 	    *application.records,
@@ -414,7 +389,6 @@ status configure_runtime(firmware_composition &application)
 	}
 
 	static track_node runtime{application.devices, application.services, *application.monitor, *application.indicator};
-
 	application.runtime = &runtime;
 
 	return {};
@@ -430,42 +404,15 @@ int main()
 	static firmware_composition application;
 
 	auto configured = configure_watchdog(application)
-	    .and_then([&]
-	{
-		return configure_console(application);
-	})
-	    .and_then([&]
-	{
-		return configure_sensors(application);
-	})
-	    .and_then([&]
-	{
-		return configure_indicator(application);
-	})
-	    .and_then([&]
-	{
-		return configure_gnss(application);
-	})
-	    .and_then([&]
-	{
-		return configure_storage(application);
-	})
-	    .and_then([&]
-	{
-		return configure_radio(application);
-	})
-	    .and_then([&]
-	{
-		return configure_bluetooth(application);
-	})
-	    .and_then([&]
-	{
-		return configure_controller(application);
-	})
-	    .and_then([&]
-	{
-		return configure_runtime(application);
-	});
+	    .and_then([&]{ return configure_console(application); })
+	    .and_then([&]{ return configure_sensors(application); })
+	    .and_then([&]{ return configure_indicator(application); })
+	    .and_then([&]{ return configure_gnss(application); })
+	    .and_then([&]{ return configure_storage(application); })
+	    .and_then([&]{ return configure_radio(application); })
+	    .and_then([&]{ return configure_bluetooth(application); })
+	    .and_then([&]{ return configure_controller(application); })
+	    .and_then([&]{ return configure_runtime(application); });
 
 	if (!configured)
 	{
