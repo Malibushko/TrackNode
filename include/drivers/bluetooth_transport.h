@@ -21,10 +21,10 @@ struct bluetooth_event
 };
 
 // Board-independent boundary. Payload ownership ends when each call returns.
-class bluetooth_backend
+class bluetooth_transport
 {
 public:
-	virtual ~bluetooth_backend() = default;
+	virtual ~bluetooth_transport() = default;
 	virtual status init() = 0;
 	virtual void stop() = 0;
 	virtual status send(std::span<const std::uint8_t> payload, std::uint32_t session) = 0;

@@ -333,14 +333,15 @@ status configure_bluetooth(firmware_composition &application)
 	}
 
 	static uart transport{uart_config{
-	    .instance = nullptr,
-	    .alternate = 0,
+	    .instance = nullptr, // TODO select UART interface
+		.tx = pin{}, // TODO
+		.rx = pin{}, // TODO
+	    .alternate = 0, // TODO
 	    .baud_rate = 115200,
-	    .mode = UART_MODE_TX_RX
+	    .mode = UART_MODE_TX_RX,
 	}};
 
 	static xiao_ble_bridge backend{transport};
-
 	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor};
 
 	return application.services.add(service_id::bluetooth, bluetooth, {service_id::logger})
