@@ -8,7 +8,7 @@ struct telemetry_sample
 {
 	sensor_sample sensor;
 	std::optional<gnss_sample> gnss;
-	TickType_t recorded_at;
+	TickType_t recorded_at{};
 };
 
 class telemetry_sink

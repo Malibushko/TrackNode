@@ -1,10 +1,10 @@
 #pragma once
 
-#include "drivers/bluetooth_transport.h"
+#include "drivers/bluetooth_backend.h"
 
 class uart;
 
-class xiao_ble_bridge final : public bluetooth_transport
+class xiao_ble_bridge final : public bluetooth_backend
 {
 public:
 	explicit xiao_ble_bridge(uart &transport) : transport_(transport) {}
