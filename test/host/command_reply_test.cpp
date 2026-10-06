@@ -1,4 +1,5 @@
 #include "application/command_reply.h"
+#include "application/deferred_command_sink.h"
 #include <cassert>
 #include <cstring>
 
@@ -9,6 +10,19 @@ struct destination final : command_reply_sink
 	bool reject = false;
 	status submit_reply(const command_reply &value) override
 	{ last = value; ++calls; return reject ? status{fail(component::service, error_code::queue_full)} : status{}; }
+};
+
+struct command_destination final : command_sink
+{
+	command_request last{};
+	int calls = 0;
+	bool reject = false;
+	status submit(command_request request) override
+	{
+		last = request;
+		++calls;
+		return reject ? status{fail(component::service, error_code::queue_full)} : status{};
+	}
 };
 
 status send(const command_request &request, command_reply_sink &fallback, const char *format, ...)
@@ -33,4 +47,22 @@ int main()
 	assert(console.calls == 1); // Do not leak BLE replies into the diagnostic console.
 	char oversized[97]; std::memset(oversized, 'x', 96); oversized[96] = '\0';
 	assert(!send(request, console, "%s", oversized)); assert(ble.calls == 2);
+
+	deferred_command_sink commands;
+	command_destination controller, other;
+	auto unbound = commands.submit(request);
+	assert(!unbound && unbound.error().code == error_code::not_initialized);
+	assert(!commands.bind(commands) && !commands.bound());
+	assert(commands.bind(controller) && commands.bound());
+	assert(!commands.bind(other));
+	assert(commands.submit(request));
+	assert(controller.calls == 1 && other.calls == 0);
+	assert(controller.last.value.type == request.value.type);
+	assert(controller.last.reply_to == &ble && controller.last.request_id == 42 && controller.last.session == 7);
+	controller.reject = true;
+	auto rejected = commands.submit(request);
+	assert(!rejected && rejected.error().code == error_code::queue_full);
+	controller.reject = false;
+	assert(commands.submit(request));
+	assert(controller.calls == 3);
 }

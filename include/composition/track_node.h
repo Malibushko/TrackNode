@@ -5,17 +5,12 @@
 #include "core/component_list.h"
 #include "core/hardware_object.h"
 
-// Bootstrap only: concrete services and devices are owned by the composition.
+// Bootstrap only: modules own static objects; composition owns the registries.
 class track_node : public hardware_object
 {
 public:
-	track_node(component_list &devices, supervisor &monitor, indicator_service &indicator)
-		: devices_(devices), supervisor_(monitor), indicator_(indicator) {}
-
-public: // Composition API
-	template<class Service>
-	status add(service_id id, Service &service, std::initializer_list<service_id> dependencies = {})
-	{ return services_.add(id, service, dependencies); }
+	track_node(component_list &devices, service_list &services, supervisor &monitor, indicator_service &indicator)
+		: devices_(devices), supervisor_(monitor), indicator_(indicator), services_(services) {}
 
 public: // Application lifecycle
 	status init();
@@ -34,7 +29,7 @@ private:
 	component_list &devices_;
 	supervisor &supervisor_;
 	indicator_service &indicator_;
-	service_list services_;
+	service_list &services_;
 	bool init_requested_ = false;
 	bool attempted_ = false;
 };
