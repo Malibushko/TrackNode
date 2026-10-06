@@ -5,7 +5,7 @@
 #include "core/component_list.h"
 #include "core/hardware_object.h"
 
-// Bootstrap only: concrete services and devices are owned by main.
+// Bootstrap only: concrete services and devices are owned by the composition.
 class track_node : public hardware_object
 {
 public:

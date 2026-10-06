@@ -4,6 +4,7 @@
 #include <array>
 
 // One producer (node_controller). Configure and seal before starting tasks.
+template<std::size_t N>
 class telemetry_router final : public telemetry_sink
 {
 public:
@@ -35,7 +36,7 @@ public:
 	}
 
 private:
-	std::array<telemetry_sink *, 4> entries_{};
+	std::array<telemetry_sink *, N> entries_{};
 	std::size_t count_ = 0;
 	bool sealed_ = false;
 };

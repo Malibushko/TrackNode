@@ -3,7 +3,7 @@
 #include "infrastructure/service_status.h"
 #include <initializer_list>
 
-// Composition-time registry. Services are owned by main and outlive this list.
+// Composition-time registry. Services are owned by the composition and outlive this list.
 class service_list
 {
 public:

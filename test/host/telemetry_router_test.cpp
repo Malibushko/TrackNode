@@ -16,7 +16,7 @@ int main()
 {
 	transport radio, ble;
 	radio_telemetry_filter filtered_radio{radio};
-	telemetry_router router;
+	telemetry_router<2> router;
 	telemetry_sample sample{{0, 1, 20, 100000, true}, {}, 1000};
 	assert(!router.submit(sample));
 	assert(router.add(filtered_radio));
@@ -39,11 +39,11 @@ int main()
 	assert(router.submit(sample)); assert(radio.calls == 4);
 	router.set_power_mode(power_mode::high);
 	assert(router.submit(sample)); assert(radio.calls == 5);
-	telemetry_router offline; offline.seal(); assert(offline.submit(sample));
+	telemetry_router<2> offline; offline.seal(); assert(offline.submit(sample));
 
 	// A router forwards every sample even in low power; only wrappers filter.
 	transport first, second;
-	telemetry_router plain;
+	telemetry_router<2> plain;
 	assert(plain.add(first)); assert(plain.add(second)); plain.seal();
 	plain.set_power_mode(power_mode::low);
 	first.reject = true;
@@ -53,7 +53,7 @@ int main()
 	// Each wrapper tracks acceptance independently, including rejected retries.
 	transport left, right;
 	radio_telemetry_filter left_filter{left}, right_filter{right};
-	telemetry_router independent;
+	telemetry_router<2> independent;
 	assert(independent.add(left_filter)); assert(independent.add(right_filter));
 	independent.seal(); independent.set_power_mode(power_mode::low);
 	right.reject = true;
