@@ -12,10 +12,10 @@ struct bluetooth_config
 	const char *tx_uuid = nullptr;
 };
 
-class bluefruit_backend final : public bluetooth_backend
+class zephyr_bluetooth final : public bluetooth_backend
 {
 public:
-	explicit bluefruit_backend(bluetooth_config config);
+	explicit zephyr_bluetooth(bluetooth_config config);
 	status init() override;
 	void stop() override;
 	status send(data_view data, session_type session) override;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drivers/bluetooth_backend.h"
+#include "drivers/protocols/ble_bridge.h"
 
 class uart;
 

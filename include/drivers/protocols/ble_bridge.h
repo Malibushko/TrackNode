@@ -1,16 +1,17 @@
 #pragma once
 
-#include "common/bluetooth_types.h"
+#include <array>
+#include <cstddef>
+#include <cstdint>
 
-namespace ble
-{
-namespace protocol
+namespace ble_bridge
 {
 constexpr std::uint8_t version = 1;
-constexpr std::size_t payload_capacity = event_payload_capacity;
+constexpr std::uint32_t baud_rate = 115200;
+constexpr std::size_t payload_capacity = 128;
 
 using sequence_type = std::uint16_t;
-using session_type = ble::session_type;
+using session_type = std::uint32_t;
 using length_type = std::uint16_t;
 using checksum_type = std::uint16_t;
 
@@ -33,14 +34,28 @@ constexpr std::size_t cobs_code_size = 1;
 constexpr std::size_t delimiter_size = 1;
 constexpr std::size_t wire_frame_capacity = raw_frame_capacity +
 	raw_frame_capacity / cobs_block_capacity + cobs_code_size + delimiter_size;
-}
 
-struct bridge_frame
+constexpr checksum_type checksum_polynomial = 0x1021;
+constexpr checksum_type checksum_initial = 0xffff;
+constexpr checksum_type checksum_xor_out = 0;
+constexpr bool checksum_reflected = false;
+
+struct frame
 {
-	protocol::frame_type type = protocol::frame_type::hello;
-	protocol::sequence_type sequence = 0;
-	protocol::session_type session = 0;
-	protocol::length_type size = 0;
-	std::array<std::uint8_t, protocol::payload_capacity> payload{};
+	frame_type type = frame_type::hello;
+	sequence_type sequence = 0;
+	session_type session = 0;
+	length_type size = 0;
+	std::array<std::uint8_t, payload_capacity> payload{};
 };
+
+struct link_payload
+{
+	std::uint8_t connected = 0;
+	std::uint8_t subscribed = 0;
+	length_type max_payload = 0;
+};
+
+constexpr std::size_t link_payload_size = sizeof(link_payload::connected) +
+	sizeof(link_payload::subscribed) + sizeof(link_payload::max_payload);
 }
