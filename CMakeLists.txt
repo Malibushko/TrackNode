@@ -12,6 +12,8 @@ option(TRACK_NODE_ENABLE_LORA "Include SX126x transport" OFF)
 option(TRACK_NODE_ENABLE_BLUETOOTH "Include unfinished Bluetooth scaffold" ON)
 option(NO_STORAGE "Build TrackNode without SD card and filesystem" ON)
 
+add_subdirectory(firmware/bluetooth)
+
 if(CMAKE_CROSSCOMPILING)
     set(STM32CUBE_F4_ROOT "" CACHE PATH "Path to STM32CubeF4 package root")
     if(NOT EXISTS "${STM32CUBE_F4_ROOT}/Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h")
