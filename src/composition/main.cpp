@@ -10,6 +10,7 @@
 #include "infrastructure/board_state_service.h"
 #include "infrastructure/gnss_service.h"
 #if TRACK_NODE_ENABLE_LORA
+#include "application/radio_telemetry_filter.h"
 #include "drivers/devices/sx126x.h"
 #include "infrastructure/radio_service.h"
 #endif
@@ -159,8 +160,9 @@ int main()
 
 #if TRACK_NODE_ENABLE_LORA
 	static radio_service radio{radio_module, logger, monitor};
+	static radio_telemetry_filter filtered_radio{radio};
 	configured = configured
-	    .and_then([&]() { return telemetry.add(radio, telemetry_policy::on_change_in_low_power); })
+	    .and_then([&]() { return telemetry.add(filtered_radio); })
 	    .and_then([&]() { return application.add(service_id::radio, radio, {service_id::logger}); });
 #endif
 #if TRACK_NODE_ENABLE_BLUETOOTH
