@@ -11,79 +11,29 @@
       }
     },
     {
-      "name": "f411",
-      "displayName": "STM32F411 firmware",
+      "name": "f411-debug",
+      "displayName": "STM32F411 Debug",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/f411",
+      "binaryDir": "${sourceDir}/build/f411-debug",
       "toolchainFile": "${sourceDir}/cmake/arm-none-eabi.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "STM32CUBE_F4_ROOT": "$env{STM32CUBE_F4_ROOT}"
-      }
-    },
-    {
-      "name": "f411-no-storage",
-      "displayName": "STM32F411 without SD storage",
-      "inherits": "f411",
-      "binaryDir": "${sourceDir}/build/f411-no-storage",
-      "cacheVariables": {
-        "NO_STORAGE": "ON"
-      }
-    },
-    {
-      "name": "f411-tickless-no-storage",
-      "displayName": "STM32F411 tickless without SD storage",
-      "inherits": "f411",
-      "binaryDir": "${sourceDir}/build/f411-tickless-no-storage",
-      "cacheVariables": {
+        "STM32CUBE_F4_ROOT": "$env{STM32CUBE_F4_ROOT}",
+        "TRACK_NODE_ENABLE_BLUETOOTH": "ON",
+        "TRACK_NODE_ENABLE_LORA": "OFF",
         "NO_STORAGE": "ON",
-        "TRACK_NODE_TICKLESS_IDLE": "ON"
+        "FAULT_INJECTION_ENABLE": "OFF",
+        "PERF_MEASURING": "OFF",
+        "TRACK_NODE_DEBUG_IN_SLEEP": "OFF"
       }
     },
     {
-      "name": "f411-tickless-debug-no-storage",
-      "displayName": "STM32F411 tickless with SWD during Sleep, without SD storage",
-      "inherits": "f411-tickless-no-storage",
-      "binaryDir": "${sourceDir}/build/f411-tickless-debug-no-storage",
+      "name": "f411-release",
+      "displayName": "STM32F411 Release",
+      "inherits": "f411-debug",
+      "binaryDir": "${sourceDir}/build/f411-release",
       "cacheVariables": {
-        "TRACK_NODE_DEBUG_IN_SLEEP": "ON"
-      }
-    },
-    {
-      "name": "f411-tickless",
-      "displayName": "STM32F411 FreeRTOS tickless experiment",
-      "inherits": "f411",
-      "binaryDir": "${sourceDir}/build/f411-tickless",
-      "cacheVariables": {
-        "TRACK_NODE_TICKLESS_IDLE": "ON"
-      }
-    },
-    {
-      "name": "f411-fault",
-      "displayName": "STM32F411 fault injection",
-      "inherits": "f411",
-      "binaryDir": "${sourceDir}/build/f411-fault",
-      "cacheVariables": {
-        "FAULT_INJECTION_ENABLE": "ON",
-        "PERF_MEASURING": "ON"
-      }
-    },
-    {
-      "name": "f411-no-radio",
-      "inherits": "f411-no-storage",
-      "binaryDir": "${sourceDir}/build/f411-no-radio",
-      "cacheVariables": {
-        "TRACK_NODE_ENABLE_LORA": "OFF",
-        "TRACK_NODE_ENABLE_BLUETOOTH": "OFF"
-      }
-    },
-    {
-      "name": "f411-ble-scaffold",
-      "inherits": "f411-no-storage",
-      "binaryDir": "${sourceDir}/build/f411-ble-scaffold",
-      "cacheVariables": {
-        "TRACK_NODE_ENABLE_LORA": "OFF",
-        "TRACK_NODE_ENABLE_BLUETOOTH": "ON"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     }
   ],
@@ -93,36 +43,12 @@
       "configurePreset": "host"
     },
     {
-      "name": "f411",
-      "configurePreset": "f411"
+      "name": "f411-debug",
+      "configurePreset": "f411-debug"
     },
     {
-      "name": "f411-no-storage",
-      "configurePreset": "f411-no-storage"
-    },
-    {
-      "name": "f411-tickless-no-storage",
-      "configurePreset": "f411-tickless-no-storage"
-    },
-    {
-      "name": "f411-tickless-debug-no-storage",
-      "configurePreset": "f411-tickless-debug-no-storage"
-    },
-    {
-      "name": "f411-tickless",
-      "configurePreset": "f411-tickless"
-    },
-    {
-      "name": "f411-fault",
-      "configurePreset": "f411-fault"
-    },
-    {
-      "name": "f411-no-radio",
-      "configurePreset": "f411-no-radio"
-    },
-    {
-      "name": "f411-ble-scaffold",
-      "configurePreset": "f411-ble-scaffold"
+      "name": "f411-release",
+      "configurePreset": "f411-release"
     }
   ],
   "testPresets": [

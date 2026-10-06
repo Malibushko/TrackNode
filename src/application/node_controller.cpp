@@ -103,7 +103,7 @@ void node_controller::run()
 	take_sample();
 	TickType_t last_sample_at = xTaskGetTickCount();
 
-#ifdef TRACK_NODE_TICKLESS_IDLE
+#if TRACK_NODE_TICKLESS_IDLE
 	set_power_mode(power_mode::low);
 #endif
 

@@ -7,11 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(FAULT_INJECTION_ENABLE "Inject random faults to simulate real world conditions" OFF)
 option(PERF_MEASURING "Log scoped execution times" OFF)
-option(TRACK_NODE_TICKLESS_IDLE "Try FreeRTOS tickless idle in the full firmware" OFF)
 option(TRACK_NODE_DEBUG_IN_SLEEP "Keep the STM32 debug interface active during Sleep" OFF)
-option(TRACK_NODE_ENABLE_LORA "Include SX126x transport" ON)
-option(TRACK_NODE_ENABLE_BLUETOOTH "Include unfinished Bluetooth scaffold" OFF)
-option(NO_STORAGE "Build TrackNode without SD card and filesystem" OFF)
+option(TRACK_NODE_ENABLE_LORA "Include SX126x transport" OFF)
+option(TRACK_NODE_ENABLE_BLUETOOTH "Include unfinished Bluetooth scaffold" ON)
+option(NO_STORAGE "Build TrackNode without SD card and filesystem" ON)
 
 if(CMAKE_CROSSCOMPILING)
     set(STM32CUBE_F4_ROOT "" CACHE PATH "Path to STM32CubeF4 package root")
@@ -62,9 +61,9 @@ if(CMAKE_CROSSCOMPILING)
         target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE PERF_MEASURING=1)
     endif()
 
-    if(TRACK_NODE_TICKLESS_IDLE)
-        target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE TRACK_NODE_TICKLESS_IDLE=1)
-    endif()
+    # Sleep policy follows the build configuration rather than a feature preset.
+    target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE
+        TRACK_NODE_TICKLESS_IDLE=$<IF:$<CONFIG:Release>,1,0>)
 
     if(TRACK_NODE_DEBUG_IN_SLEEP)
         target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE TRACK_NODE_DEBUG_IN_SLEEP=1)
