@@ -15,7 +15,6 @@ class telemetry_sink
 {
 public:
 	virtual ~telemetry_sink() = default;
-	// Nonblocking acceptance into a transport queue, not delivery confirmation.
 	virtual status submit(const telemetry_sample &sample) = 0;
 	virtual void set_power_mode(power_mode mode) = 0;
 };

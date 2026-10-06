@@ -25,6 +25,8 @@
 
 class storage_service;
 
+//////////////////////////////////////////////////////////////////////////
+
 struct firmware_composition
 {
 	component_list devices;
@@ -42,6 +44,8 @@ struct firmware_composition
 	track_node *runtime = nullptr;
 };
 
+//////////////////////////////////////////////////////////////////////////
+
 status initialize_platform()
 {
 	HAL_Init();
@@ -51,6 +55,8 @@ status initialize_platform()
 
 	return init_system_clock();
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status configure_watchdog(firmware_composition &application)
 {
@@ -76,6 +82,8 @@ status configure_watchdog(firmware_composition &application)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status configure_console(firmware_composition &application)
 {
@@ -117,6 +125,8 @@ status configure_console(firmware_composition &application)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status configure_sensors(firmware_composition &application)
 {
 	static i2c_bus bus{i2c_bus_config{
@@ -144,6 +154,8 @@ status configure_sensors(firmware_composition &application)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status configure_indicator(firmware_composition &application)
 {
 	if (!application.logger || !application.monitor)
@@ -162,6 +174,8 @@ status configure_indicator(firmware_composition &application)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status configure_gnss(firmware_composition &application)
 {
@@ -200,6 +214,8 @@ status configure_gnss(firmware_composition &application)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status configure_storage(firmware_composition &application)
 {
@@ -247,6 +263,8 @@ status configure_storage(firmware_composition &application)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status configure_radio(firmware_composition &application)
 {
@@ -304,6 +322,8 @@ status configure_radio(firmware_composition &application)
 #endif
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status configure_bluetooth(firmware_composition &application)
 {
 #if TRACK_NODE_ENABLE_BLUETOOTH
@@ -331,6 +351,8 @@ status configure_bluetooth(firmware_composition &application)
 	return {};
 #endif
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status configure_controller(firmware_composition &application)
 {
@@ -381,6 +403,8 @@ status configure_controller(firmware_composition &application)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status configure_runtime(firmware_composition &application)
 {
 	if (!application.monitor || !application.indicator || !application.commands.bound() || application.runtime)
@@ -393,6 +417,8 @@ status configure_runtime(firmware_composition &application)
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 int main()
 {
