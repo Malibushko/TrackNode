@@ -309,7 +309,10 @@ void node_controller::handle_ping()
 	if (auto accepted = indicator_.ping(); !accepted)
 	{
 		(void)reply("Indicator queue full\r\n");
+		return;
 	}
+
+	(void)reply("PONG\r\n");
 }
 
 //////////////////////////////////////////////////////////////////////////

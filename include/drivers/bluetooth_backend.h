@@ -32,6 +32,8 @@ public:
 	virtual ~bluetooth_backend() = default;
 	virtual status init() = 0;
 	virtual void stop() = 0;
+	virtual status start_advertise() = 0;
+	virtual status stop_advertise() = 0;
 	virtual status send(std::span<const std::uint8_t> payload, std::uint32_t session) = 0;
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
 };

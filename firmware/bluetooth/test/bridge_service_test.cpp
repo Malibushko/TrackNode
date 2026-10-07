@@ -21,6 +21,8 @@ public:
 	std::deque<std::vector<std::uint8_t>> chunks;
 	bool io_error = false;
 	bool running = false;
+	std::deque<ble_bridge::frame> written;
+	ble_bridge::bridge_codec codec;
 
 	ble::status init() override
 	{
@@ -33,8 +35,9 @@ public:
 		running = false;
 	}
 
-	ble::status write(ble::data_view, std::uint32_t) override
+	ble::status write(ble::data_view data, std::uint32_t) override
 	{
+		written.push_back(codec.decode({data.data, data.size}).value());
 		return {};
 	}
 
@@ -71,6 +74,10 @@ public:
 	unsigned stops = 0;
 	bool fail_init = false;
 	bool overflow = false;
+	std::deque<ble::bluetooth_event> events;
+	std::vector<std::uint8_t> sent;
+	ble::session_t session = 0;
+	bool busy = false;
 
 	ble::status init() override
 	{
@@ -96,8 +103,15 @@ public:
 		return {};
 	}
 
-	ble::status send(ble::data_view, ble::session_t) override
+	ble::status send(ble::data_view data, ble::session_t target) override
 	{
+		if (busy)
+		{
+			return ble::fail(ble::component::bluetooth, ble::error_code::busy);
+		}
+
+		sent.assign(data.data, data.data + data.size);
+		session = target;
 		return {};
 	}
 
@@ -106,6 +120,13 @@ public:
 		if (overflow)
 		{
 			return ble::fail(ble::component::bluetooth, ble::error_code::overflow);
+		}
+
+		if (!events.empty())
+		{
+			const auto event = events.front();
+			events.pop_front();
+			return event;
 		}
 
 		return ble::bluetooth_event{};
@@ -177,6 +198,62 @@ int main()
 	transport.chunks.push_back(advertise);
 	require(bridge.poll().has_value());
 	require(bluetooth.advertisements == 5);
+	transport.written.clear();
+	bluetooth.events.push_back(ble::bluetooth_event{
+		.type = ble::bluetooth_event::kind::link_changed,
+		.link = {true, true, 20, 42}
+	});
+	require(bridge.poll().has_value());
+	require(transport.written.back().type == ble_bridge::frame_type::link);
+	require(transport.written.back().session == 42 && transport.written.back().payload[2] == 20);
+	bluetooth.events.push_back(ble::bluetooth_event{
+		.type = ble::bluetooth_event::kind::received,
+		.link = {true, true, 20, 42},
+		.payload = {'P', 'I', 'N', 'G'},
+		.size = 4
+	});
+	require(bridge.poll().has_value());
+	require(transport.written.back().type == ble_bridge::frame_type::received);
+	require(transport.written.back().session == 42 && transport.written.back().size == 4);
+	require(bluetooth.sent.empty());
+
+	const auto push = [&](const ble_bridge::frame &frame)
+	{
+		std::vector<std::uint8_t> bytes(ble_bridge::wire_frame_capacity);
+		bytes.resize(codec.encode(frame, bytes).value());
+		transport.chunks.push_back(bytes);
+	};
+	push(ble_bridge::frame{
+		.type = ble_bridge::frame_type::hello,
+		.sequence = 19
+	});
+	require(bridge.poll().has_value());
+	require(transport.written.back().type == ble_bridge::frame_type::ready);
+	require(transport.written.back().sequence == 19 && transport.written.back().session == 42);
+	const ble_bridge::frame outgoing{
+		.type = ble_bridge::frame_type::send,
+		.sequence = 20,
+		.session = 42,
+		.size = 4,
+		.payload = {'P', 'O', 'N', 'G'}
+	};
+	push(outgoing);
+	require(bridge.poll().has_value());
+	require(bluetooth.sent == std::vector<std::uint8_t>({'P', 'O', 'N', 'G'}) && bluetooth.session == 42);
+	require(transport.written.back().type == ble_bridge::frame_type::ack);
+	require(transport.written.back().sequence == 20 && transport.written.back().session == 42);
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::ok));
+	bluetooth.busy = true;
+	push(outgoing);
+	require(bridge.poll().has_value());
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::busy));
+	push(ble_bridge::frame{
+		.type = ble_bridge::frame_type::advertise,
+		.size = 1
+	});
+	require(bridge.poll().has_value());
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::invalid_request));
+
 	bluetooth.overflow = true;
 	require(bridge.poll().error().code == ble::error_code::overflow);
 	bridge.stop();

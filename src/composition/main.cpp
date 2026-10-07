@@ -339,6 +339,7 @@ status configure_bluetooth(firmware_composition &application)
 	    .alternate = 0, // TODO
 	    .baud_rate = 115200,
 	    .mode = UART_MODE_TX_RX,
+	    .rx_buffer_size = 1024,
 	}};
 
 	static xiao_ble_bridge backend{transport};

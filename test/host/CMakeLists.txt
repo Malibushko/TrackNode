@@ -95,3 +95,19 @@ add_executable(bridge_stream_parser_test bridge_stream_parser_test.cpp
     "${PROJECT_SOURCE_DIR}/src/drivers/protocols/bridge_stream_parser.cpp")
 target_link_libraries(bridge_stream_parser_test PRIVATE host_headers)
 add_test(NAME bridge_stream_parser_test COMMAND bridge_stream_parser_test)
+
+add_executable(xiao_ble_bridge_test xiao_ble_bridge_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/drivers/devices/xiao_ble_bridge.cpp"
+    "${PROJECT_SOURCE_DIR}/src/drivers/protocols/bridge_codec.cpp"
+    "${PROJECT_SOURCE_DIR}/src/drivers/protocols/bridge_stream_parser.cpp")
+target_include_directories(xiao_ble_bridge_test PRIVATE bluetooth_fakes)
+target_link_libraries(xiao_ble_bridge_test PRIVATE host_headers)
+add_test(NAME xiao_ble_bridge_test COMMAND xiao_ble_bridge_test)
+
+add_executable(bluetooth_service_test bluetooth_service_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/bluetooth_service.cpp"
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/command_parser.cpp"
+    "${PROJECT_SOURCE_DIR}/src/application/log_record.cpp")
+target_include_directories(bluetooth_service_test PRIVATE bluetooth_fakes)
+target_link_libraries(bluetooth_service_test PRIVATE host_headers)
+add_test(NAME bluetooth_service_test COMMAND bluetooth_service_test)

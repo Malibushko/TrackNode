@@ -29,27 +29,33 @@ int main()
 		.bluetooth = bluetooth,
 		.codec = codec,
 
-		.poll_frequency_ms = 500,
-		.poll_transport_timeout_ms = 100
+		.poll_frequency_ms = 1,
+		.poll_transport_timeout_ms = 10,
+		.poll_bluetooth_timeout_ms = 0
 	};
 
 	static ble::bridge_service bridge{bridge_config};
 
-	const auto started = bridge.start();
-	if (!started)
-	{
-		return 1;
-	}
-
 	while (true)
 	{
-		const auto polled = bridge.poll();
-		if (!polled)
+		const auto started = bridge.start();
+		if (!started)
 		{
-			bridge.stop();
-			return 1;
+			k_msleep(1000);
+			continue;
 		}
 
-		k_msleep(1);
+		while (true)
+		{
+			const auto polled = bridge.poll();
+			if (!polled)
+			{
+				bridge.stop();
+				k_msleep(1000);
+				break;
+			}
+
+			k_msleep(bridge_config.poll_frequency_ms);
+		}
 	}
 }

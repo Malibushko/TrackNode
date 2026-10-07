@@ -1,5 +1,6 @@
 target_sources(${TRACK_NODE_TARGET} PRIVATE
     protocols/bridge_codec.cpp
+    protocols/bridge_stream_parser.cpp
     adc.cpp
     gpio.cpp
     i2c_bus.cpp

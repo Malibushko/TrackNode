@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace ble_bridge
 {
@@ -14,6 +15,17 @@ using sequence_type = std::uint16_t;
 using session_type = std::uint32_t;
 using length_type = std::uint16_t;
 using checksum_type = std::uint16_t;
+
+enum class ack_code : std::uint8_t
+{
+	ok = 0,
+	invalid_request = 1,
+	not_ready = 2,
+	busy = 3,
+	unsupported = 4,
+	io = 5,
+	overflow = 6
+};
 
 enum class frame_type : std::uint8_t
 {
@@ -60,4 +72,27 @@ struct link_payload
 
 constexpr std::size_t link_payload_size = sizeof(link_payload::connected) +
 	sizeof(link_payload::subscribed) + sizeof(link_payload::max_payload);
+
+inline void encode_link(frame &message, link_payload link)
+{
+	message.size = link_payload_size;
+	message.payload[0] = link.connected;
+	message.payload[1] = link.subscribed;
+	message.payload[2] = static_cast<std::uint8_t>(link.max_payload);
+	message.payload[3] = static_cast<std::uint8_t>(link.max_payload >> 8);
+}
+
+inline std::optional<link_payload> decode_link(const frame &message)
+{
+	if (message.size != link_payload_size || message.payload[0] > 1 || message.payload[1] > 1)
+	{
+		return std::nullopt;
+	}
+
+	return link_payload{
+		.connected = message.payload[0],
+		.subscribed = message.payload[1],
+		.max_payload = static_cast<length_type>(message.payload[2] | message.payload[3] << 8)
+	};
+}
 }

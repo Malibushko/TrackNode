@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include "core/result.h"
+#include "common/bluetooth_types.h"
 #include "drivers/protocols/bridge_stream_parser.h"
 
 namespace ble_bridge
@@ -20,9 +21,9 @@ struct bridge_config
 	bluetooth_backend &bluetooth;
 	ble_bridge::bridge_codec &codec;
 
-	std::uint32_t poll_frequency_ms = 500;
-	std::uint32_t poll_transport_timeout_ms = 100;
-	std::uint32_t poll_bluetooth_timeout_ms = 100;
+	std::uint32_t poll_frequency_ms = 1;
+	std::uint32_t poll_transport_timeout_ms = 10;
+	std::uint32_t poll_bluetooth_timeout_ms = 0;
 };
 
 class bridge_service
@@ -36,13 +37,26 @@ public:
 
 private:
 
-	status handle_frame(ble_bridge::frame &frame);
+	status poll_transport();
+	status poll_bluetooth();
+	status handle_link_changed(const bluetooth_event &event);
+	status handle_received(const bluetooth_event &event);
+	status handle_hello(const ble_bridge::frame &frame);
+	status handle_send(const ble_bridge::frame &frame);
+	status handle_advertise(const ble_bridge::frame &frame);
+	status handle_stop_advertise(const ble_bridge::frame &frame);
+	static ble_bridge::ack_code status_to_ack(const status &outcome);
+	status write_ack(const ble_bridge::frame &request, const status &outcome);
+	status handle_frame(const ble_bridge::frame &frame);
+	status write_frame(const ble_bridge::frame &frame);
+	status write_link(ble_bridge::frame_type type, ble_bridge::sequence_type sequence = 0);
 
 private:
 	bridge_config &config_;
 	ble_bridge::bridge_stream_parser parser_;
 	std::array<std::uint8_t, ble_bridge::wire_frame_capacity> buffer_{};
 
+	ble::bluetooth_link link_{};
 	bool initialized_{ false };
 };
 }

@@ -1,0 +1,161 @@
+#include "drivers/devices/xiao_ble_bridge.h"
+#include "drivers/uart.h"
+#include <iostream>
+#include <stdexcept>
+
+void require(bool condition)
+{
+	if (!condition)
+	{
+		throw std::runtime_error("STM32 bridge test failed");
+	}
+}
+
+int main()
+{
+	uart transport;
+	xiao_ble_bridge backend{transport};
+	ble_bridge::bridge_codec codec;
+	const auto push = [&](const ble_bridge::frame &frame)
+	{
+		std::array<std::uint8_t, ble_bridge::wire_frame_capacity> output{};
+		const auto size = codec.encode(frame, output).value();
+		transport.input.insert(transport.input.end(), output.begin(), output.begin() + size);
+	};
+	ble_bridge::frame link{
+		.type = ble_bridge::frame_type::link,
+		.session = 7,
+		.size = 4,
+		.payload = {1, 1, 20, 0}
+	};
+	bool answer = true;
+	bool inject_rx = false;
+	unsigned burst = 0;
+	auto result_code = ble_bridge::ack_code::ok;
+	ble_bridge::frame last_send{};
+	transport.on_write = [&](const std::uint8_t *bytes, std::size_t size) -> status
+	{
+		if (size == 1 && bytes[0] == 0)
+		{
+			return {};
+		}
+
+		const auto request = codec.decode({bytes, size}).value();
+		if (!answer)
+		{
+			return {};
+		}
+		if (request.type == ble_bridge::frame_type::hello)
+		{
+			auto ready = link;
+			ready.type = ble_bridge::frame_type::ready;
+			ready.sequence = request.sequence;
+			push(ready);
+		}
+		else
+		{
+			last_send = request;
+			if (inject_rx)
+			{
+				push(ble_bridge::frame{
+					.type = ble_bridge::frame_type::received,
+					.session = 7,
+					.size = 4,
+					.payload = {'P', 'I', 'N', 'G'}
+				});
+			}
+
+			for (unsigned index = 0; index < burst; ++index)
+			{
+				push(ble_bridge::frame{
+					.type = ble_bridge::frame_type::received,
+					.session = 7,
+					.size = 1,
+					.payload = {'X'}
+				});
+			}
+
+			push(ble_bridge::frame{
+				.type = ble_bridge::frame_type::ack,
+				.sequence = static_cast<ble_bridge::sequence_type>(request.sequence + 1),
+				.session = request.session,
+				.size = 1
+			});
+			push(ble_bridge::frame{
+				.type = ble_bridge::frame_type::ack,
+				.sequence = request.sequence,
+				.session = request.session,
+				.size = 1,
+				.payload = {static_cast<std::uint8_t>(result_code)}
+			});
+		}
+
+		return {};
+	};
+	require(!backend.poll(0));
+	require(backend.init().has_value());
+	bluetooth_event event{};
+	do
+	{
+		event = backend.poll(0).value();
+	}
+	while (event.type == bluetooth_event::kind::idle);
+	require(event.link.connected && event.link.max_payload == 20);
+	const auto session = event.link.session;
+	const std::array<std::uint8_t, 4> payload{'P', 'O', 'N', 'G'};
+	require(!backend.send(payload, session + 1));
+	inject_rx = true;
+	require(backend.send(payload, session).has_value());
+	require(last_send.session == 7 && last_send.size == 4 && last_send.payload[0] == 'P');
+	require(backend.poll(0)->type == bluetooth_event::kind::received);
+	inject_rx = false;
+	result_code = ble_bridge::ack_code::busy;
+	require(backend.send(payload, session).error().code == error_code::queue_full);
+	result_code = ble_bridge::ack_code::ok;
+	require(backend.start_advertise().has_value());
+	require(last_send.type == ble_bridge::frame_type::advertise && last_send.session == 0);
+	require(backend.stop_advertise().has_value());
+
+	backend.stop();
+	require(backend.init().has_value());
+	event = backend.poll(0).value();
+	require(event.link.session != session);
+	require(!backend.send(payload, session));
+	answer = false;
+	require(backend.send(payload, event.link.session).error().code == error_code::timeout_error);
+	require(!backend.poll(0));
+	answer = true;
+	require(backend.init().has_value());
+	(void)backend.poll(0);
+	++transport.drops;
+	require(backend.poll(0).error().code == error_code::uart_error);
+	backend.stop();
+	require(backend.init().has_value());
+	(void)backend.poll(0);
+	transport.chunk_size = ble_bridge::wire_frame_capacity;
+	for (unsigned index = 0; index < 10; ++index)
+	{
+		push(link);
+	}
+	bool overflow = false;
+	for (unsigned index = 0; index < 12; ++index)
+	{
+		const auto received = backend.poll(0);
+		if (!received)
+		{
+			overflow = true;
+			break;
+		}
+	}
+	require(!overflow);
+	burst = 9;
+	backend.stop();
+	require(backend.init().has_value());
+	const auto current = backend.poll(0)->link.session;
+	require(backend.send(payload, current).error().code == error_code::queue_full);
+	require(!backend.poll(0));
+	burst = 0;
+	backend.stop();
+	require(backend.init().has_value());
+	std::cout << "Handshake, fragmented UART, ACK matching, interleaved RX, stale sessions and timeout passed\n";
+}
