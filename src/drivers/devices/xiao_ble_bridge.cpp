@@ -36,15 +36,11 @@ status xiao_ble_bridge::init()
 		return fail(component::service, error_code::already_initialized);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	const auto started = transport_.init();
 	if (!started && started.error().code != error_code::already_initialized)
 	{
 		return started;
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	stop();
 	dropped_ = transport_.dropped_count();
@@ -53,8 +49,6 @@ status xiao_ble_bridge::init()
 	{
 		return resynchronized;
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	ble_bridge::frame hello{};
 	const auto ready = send_and_wait_for_response(hello, ble_bridge::frame_type::ready);
@@ -85,8 +79,6 @@ status xiao_ble_bridge::start_advertise()
 		return fail(component::service, error_code::not_initialized);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	ble_bridge::frame request{
 		.type = ble_bridge::frame_type::advertise
 	};
@@ -101,8 +93,6 @@ status xiao_ble_bridge::stop_advertise()
 	{
 		return fail(component::service, error_code::not_initialized);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	ble_bridge::frame request{
 		.type = ble_bridge::frame_type::stop_advertise
@@ -126,8 +116,6 @@ status xiao_ble_bridge::send(std::span<const std::uint8_t> payload, std::uint32_
 	{
 		return fail(component::service, error_code::invalid_argument);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	ble_bridge::frame request{
 		.type = ble_bridge::frame_type::send,
@@ -157,8 +145,6 @@ void xiao_ble_bridge::prepare_response_wait(ble_bridge::frame &frame, ble_bridge
 		++sequence_;
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	frame.sequence = sequence_;
 	expected_ = response;
 	pending_sequence_ = sequence_;
@@ -178,15 +164,11 @@ status xiao_ble_bridge::write_frame(const ble_bridge::frame &frame)
 		return fail(component::service, error_code::invalid_argument);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	const auto written = transport_.write(output.data(), *size, response_timeout_ms);
 	if (!written)
 	{
 		initialized_ = false;
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return written;
 }
@@ -206,8 +188,6 @@ status xiao_ble_bridge::wait_for_response()
 			return fail(component::service, error_code::timeout_error);
 		}
 
-//////////////////////////////////////////////////////////////////////////
-
 		const auto received = read_frames((budget - elapsed) * portTICK_PERIOD_MS);
 		if (!received)
 		{
@@ -215,8 +195,6 @@ status xiao_ble_bridge::wait_for_response()
 			return received;
 		}
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return ack_to_status(response_);
 }
@@ -230,8 +208,6 @@ status xiao_ble_bridge::enqueue(const bluetooth_event &event)
 		initialized_ = false;
 		return fail(component::service, error_code::queue_full);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	events_[(event_head_ + event_count_) % events_.size()] = event;
 	++event_count_;
@@ -247,8 +223,6 @@ bool xiao_ble_bridge::should_handle_frame(const ble_bridge::frame &frame) const
 		return frame.type == ble_bridge::frame_type::ready && frame.sequence == pending_sequence_;
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return frame.type != ble_bridge::frame_type::ready;
 }
 
@@ -260,8 +234,6 @@ status xiao_ble_bridge::handle_frame(const ble_bridge::frame &frame)
 	{
 		return {};
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	switch (frame.type)
 	{
@@ -289,8 +261,6 @@ status xiao_ble_bridge::handle_ack(const ble_bridge::frame &frame)
 		answered_ = true;
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return {};
 }
 
@@ -305,8 +275,6 @@ status xiao_ble_bridge::handle_ready(const ble_bridge::frame &frame)
 		answered_ = true;
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return handled;
 }
 
@@ -320,8 +288,6 @@ result<bluetooth_link> xiao_ble_bridge::decode_link(const ble_bridge::frame &fra
 		return fail(component::service, error_code::device_error);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	bluetooth_link link{
 		.connected = state->connected != 0,
 		.subscribed = state->subscribed != 0,
@@ -333,8 +299,6 @@ result<bluetooth_link> xiao_ble_bridge::decode_link(const ble_bridge::frame &fra
 	{
 		return fail(component::service, error_code::device_error);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return link;
 }
@@ -351,8 +315,6 @@ void xiao_ble_bridge::update_link(bluetooth_link next)
 		}
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	remote_session_ = next.session;
 	next.session = session_counter_;
 	link_ = next;
@@ -367,8 +329,6 @@ status xiao_ble_bridge::handle_link(const ble_bridge::frame &frame)
 	{
 		return tl::unexpected(next.error());
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	update_link(*next);
 	return enqueue(bluetooth_event{
@@ -385,8 +345,6 @@ status xiao_ble_bridge::handle_received(const ble_bridge::frame &frame)
 	{
 		return {};
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return enqueue(bluetooth_event{
 		.type = bluetooth_event::kind::received,
@@ -406,8 +364,6 @@ status xiao_ble_bridge::check_transport_overflow()
 		initialized_ = false;
 		return fail(component::uart, error_code::uart_error);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return {};
 }
@@ -429,8 +385,6 @@ status xiao_ble_bridge::consume_bytes(std::span<const std::uint8_t> bytes)
 		}
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return {};
 }
 
@@ -443,8 +397,6 @@ status xiao_ble_bridge::read_frames(std::uint32_t timeout_ms)
 		return checked;
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	std::array<std::uint8_t, ble_bridge::wire_frame_capacity> input{};
 	const auto size = transport_.read(input.data(), input.size(), timeout_ms);
 	if (!size)
@@ -454,13 +406,9 @@ status xiao_ble_bridge::read_frames(std::uint32_t timeout_ms)
 			return {};
 		}
 
-//////////////////////////////////////////////////////////////////////////
-
 		initialized_ = false;
 		return tl::unexpected(size.error());
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return check_transport_overflow()
 		.and_then([&]{ return consume_bytes(std::span{input}.first(*size)); });
@@ -485,8 +433,6 @@ result<bluetooth_event> xiao_ble_bridge::poll(std::uint32_t timeout_ms)
 	{
 		return bluetooth_event{};
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	const auto event = events_[event_head_];
 	event_head_ = (event_head_ + 1) % events_.size();

@@ -15,8 +15,6 @@ constexpr std::size_t command_capacity = 64;
 constexpr std::size_t reply_queue_capacity = 4;
 }
 
-//////////////////////////////////////////////////////////////////////////
-
 static_assert(std::is_trivially_copyable_v<telemetry_sample>);
 
 status bluetooth_service::start()
@@ -26,8 +24,6 @@ status bluetooth_service::start()
 		return fail(component::rtos, error_code::already_initialized);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	replies_ = xQueueCreate(reply_queue_capacity, sizeof(command_reply));
 	samples_ = xQueueCreate(1, sizeof(telemetry_sample));
 	if (!replies_ || !samples_)
@@ -36,8 +32,6 @@ status bluetooth_service::start()
 		return fail(component::rtos, error_code::out_of_memory);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	const auto created = task_create(task_entry, "bluetooth", configMINIMAL_STACK_SIZE * 8,
 		this, tskIDLE_PRIORITY + 1);
 	if (!created)
@@ -45,8 +39,6 @@ status bluetooth_service::start()
 		stop();
 		return tl::unexpected(created.error());
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	task_ = *created;
 	monitor_.set_health(service_id::bluetooth, service_health::starting);
@@ -73,8 +65,6 @@ void bluetooth_service::stop()
 		samples_ = nullptr;
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	backend_.stop();
 	link_ = {};
 	advertise_pending_ = false;
@@ -93,8 +83,6 @@ status bluetooth_service::submit(const telemetry_sample &sample)
 		return fail(component::service, error_code::invalid_argument);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return from_freertos(xQueueOverwrite(samples_, &sample));
 }
 
@@ -110,8 +98,6 @@ status bluetooth_service::submit_reply(const command_reply &reply)
 	{
 		return fail(component::service, error_code::queue_full);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return {};
 }
@@ -131,8 +117,6 @@ status bluetooth_service::send_text(std::string_view text, std::uint32_t session
 		return fail(component::service, error_code::not_ready);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	while (!text.empty())
 	{
 		const auto size = std::min<std::size_t>(text.size(), link_.max_payload);
@@ -142,13 +126,9 @@ status bluetooth_service::send_text(std::string_view text, std::uint32_t session
 			return sent;
 		}
 
-//////////////////////////////////////////////////////////////////////////
-
 		text.remove_prefix(size);
 		monitor_.progress(service_id::bluetooth, xTaskGetTickCount());
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return {};
 }
@@ -166,8 +146,6 @@ status bluetooth_service::send_error(const char *text, std::uint32_t session)
 	{
 		return fail(component::service, error_code::invalid_argument);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	std::copy_n(text, size, reply.text.begin());
 	return submit_reply(reply);
@@ -206,8 +184,6 @@ status bluetooth_service::handle_received(const bluetooth_event &event)
 		return {};
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	if (++request_id_ == 0)
 	{
 		++request_id_;
@@ -216,8 +192,6 @@ status bluetooth_service::handle_received(const bluetooth_event &event)
 	{
 		return fail(component::service, error_code::invalid_argument);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	std::string_view text{reinterpret_cast<const char *>(event.payload.data()), event.size};
 	while (!text.empty() && (text.back() == '\r' || text.back() == '\n'))
@@ -233,8 +207,6 @@ status bluetooth_service::handle_received(const bluetooth_event &event)
 		return send_error("ERR INVALID_SYNTAX\r\n", event.link.session);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return handle_command(text, event.link.session);
 }
 
@@ -248,8 +220,6 @@ status bluetooth_service::handle_command(std::string_view text, std::uint32_t se
 		return send_parse_error(parsed.error(), session);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	const auto accepted = commands_.submit(command_request{
 		.value = *parsed,
 		.reply_to = this,
@@ -260,8 +230,6 @@ status bluetooth_service::handle_command(std::string_view text, std::uint32_t se
 	{
 		return send_error("ERR COMMAND_QUEUE_FULL\r\n", session);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return {};
 }
@@ -297,15 +265,11 @@ status bluetooth_service::send_reply(const command_reply &reply)
 		return {};
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	const auto end = std::find(reply.text.begin(), reply.text.end(), '\0');
 	if (end == reply.text.end())
 	{
 		return fail(component::service, error_code::invalid_argument);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return send_text({reply.text.data(), static_cast<std::size_t>(end - reply.text.begin())}, reply.session);
 }
@@ -323,8 +287,6 @@ status bluetooth_service::process_replies()
 		}
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return {};
 }
 
@@ -338,15 +300,11 @@ status bluetooth_service::process_sample()
 		return {};
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	const auto record = format_sample_csv(sample.sensor, sample.gnss, sample.recorded_at);
 	if (!record)
 	{
 		return tl::unexpected(record.error());
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	std::array<char, log_record{}.text.size() + 2> text{};
 	text[0] = 'T';
@@ -378,8 +336,6 @@ bool bluetooth_service::initialize_backend()
 		return false;
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	monitor_.set_health(service_id::bluetooth, service_health::ready);
 	return true;
 }
@@ -392,8 +348,6 @@ status bluetooth_service::process_advertising()
 	{
 		return {};
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	const auto outcome = backend_.start_advertise();
 	advertise_pending_ = !outcome.has_value();
@@ -411,8 +365,6 @@ status bluetooth_service::poll_and_process(bool &poll_failed)
 		return tl::unexpected(event.error());
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return handle_event(*event)
 		.and_then([&]{ return process_advertising(); })
 		.and_then([&]{ return process_output(); });
@@ -429,8 +381,6 @@ bool bluetooth_service::handle_failure(error failure, bool poll_failed)
 		backend_.stop();
 		return false;
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return true;
 }
@@ -451,8 +401,6 @@ void bluetooth_service::run()
 			}
 		}
 
-//////////////////////////////////////////////////////////////////////////
-
 		bool poll_failed = false;
 		const auto outcome = poll_and_process(poll_failed);
 		if (!outcome)
@@ -463,8 +411,6 @@ void bluetooth_service::run()
 		{
 			monitor_.set_health(service_id::bluetooth, service_health::ready);
 		}
-
-//////////////////////////////////////////////////////////////////////////
 
 		monitor_.progress(service_id::bluetooth, xTaskGetTickCount());
 	}

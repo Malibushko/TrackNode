@@ -20,8 +20,6 @@ status bridge_service::start()
 		return fail(component::service, error_code::already_initialized);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	const auto started = config_.transport.init()
 		.and_then([&]{ return config_.bluetooth.init(); });
 	if (!started)
@@ -29,8 +27,6 @@ status bridge_service::start()
 		stop();
 		return started;
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	parser_.reset();
 	link_ = {};
@@ -61,8 +57,6 @@ status bridge_service::write_frame(const ble_bridge::frame &frame)
 		return fail(component::protocol, error_code::invalid_config);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return config_.transport.write({output.data(), *encoded}, config_.poll_transport_timeout_ms);
 }
 
@@ -92,8 +86,6 @@ status bridge_service::poll()
 		return fail(component::service, error_code::not_initialized);
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return poll_transport().and_then([&]{ return poll_bluetooth(); });
 }
 
@@ -109,13 +101,9 @@ status bridge_service::poll_transport()
 			return {};
 		}
 
-//////////////////////////////////////////////////////////////////////////
-
 		parser_.reset();
 		return tl::unexpected(received.error());
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	for (std::size_t index = 0; index < *received; ++index)
 	{
@@ -129,8 +117,6 @@ status bridge_service::poll_transport()
 		}
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return {};
 }
 
@@ -143,8 +129,6 @@ status bridge_service::poll_bluetooth()
 	{
 		return tl::unexpected(event.error());
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	switch (event->type)
 	{
@@ -173,8 +157,6 @@ status bridge_service::handle_received(const bluetooth_event &event)
 	{
 		return fail(component::protocol, error_code::overflow);
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	ble_bridge::frame frame{
 		.type = ble_bridge::frame_type::received,
@@ -213,8 +195,6 @@ status bridge_service::handle_hello(const ble_bridge::frame &frame)
 		return write_ack(frame, fail(component::protocol, error_code::invalid_config));
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return write_link(ble_bridge::frame_type::ready, frame.sequence);
 }
 
@@ -235,8 +215,6 @@ status bridge_service::handle_advertise(const ble_bridge::frame &frame)
 		return write_ack(frame, fail(component::protocol, error_code::invalid_config));
 	}
 
-//////////////////////////////////////////////////////////////////////////
-
 	return write_ack(frame, config_.bluetooth.start_advertise());
 }
 
@@ -248,8 +226,6 @@ status bridge_service::handle_stop_advertise(const ble_bridge::frame &frame)
 	{
 		return write_ack(frame, fail(component::protocol, error_code::invalid_config));
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	return write_ack(frame, config_.bluetooth.stop_advertise());
 }
@@ -263,8 +239,6 @@ ble_bridge::ack_code bridge_service::status_to_ack(const status &outcome)
 	{
 		return ack_code::ok;
 	}
-
-//////////////////////////////////////////////////////////////////////////
 
 	switch (outcome.error().code)
 	{
