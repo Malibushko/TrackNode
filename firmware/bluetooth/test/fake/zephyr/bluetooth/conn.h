@@ -6,6 +6,8 @@ struct bt_conn
 {
 	int references = 1;
 	int disconnects = 0;
+	std::uint16_t mtu = 23;
+	bool subscribed = false;
 };
 inline bt_conn *bt_conn_ref(bt_conn *connection)
 {

@@ -23,3 +23,13 @@ target_compile_features(bridge_service_test PRIVATE cxx_std_20)
 target_include_directories(bridge_service_test PRIVATE ../include ../../../include ../../../lib/expected/include)
 target_compile_options(bridge_service_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME bridge_service_test COMMAND bridge_service_test)
+
+add_executable(zephyr_gatt_test zephyr_gatt_test.cpp
+    ../src/drivers/devices/zephyr_bluetooth.cpp
+    ../src/drivers/devices/zephyr_gatt_server.cpp)
+find_package(Threads REQUIRED)
+target_link_libraries(zephyr_gatt_test PRIVATE Threads::Threads)
+target_compile_features(zephyr_gatt_test PRIVATE cxx_std_20)
+target_include_directories(zephyr_gatt_test PRIVATE fake ../include ../../../lib/expected/include)
+target_compile_options(zephyr_gatt_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME zephyr_gatt_test COMMAND zephyr_gatt_test)

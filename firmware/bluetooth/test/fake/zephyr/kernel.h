@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <mutex>
 using k_timeout_t = std::int64_t;
 using k_timepoint_t = std::int64_t;
 inline std::int64_t simulated_time = 0;
@@ -61,17 +62,24 @@ inline int k_sem_take(k_sem *s, k_timeout_t timeout)
 	}
 	return -EAGAIN;
 }
-struct k_mutex {};
+struct k_mutex
+{
+	std::recursive_mutex mutex;
+};
+#define K_MUTEX_DEFINE(name) k_mutex name
+inline constexpr k_timeout_t K_FOREVER = -1;
 inline int k_mutex_init(k_mutex *)
 {
 	return 0;
 }
-inline int k_mutex_lock(k_mutex *, k_timeout_t)
+inline int k_mutex_lock(k_mutex *lock, k_timeout_t)
 {
+	lock->mutex.lock();
 	return 0;
 }
-inline int k_mutex_unlock(k_mutex *)
+inline int k_mutex_unlock(k_mutex *lock)
 {
+	lock->mutex.unlock();
 	return 0;
 }
 

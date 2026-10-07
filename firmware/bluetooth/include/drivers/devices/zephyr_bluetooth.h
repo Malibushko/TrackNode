@@ -20,6 +20,7 @@ class zephyr_bluetooth final : public bluetooth_backend
 {
 public:
 	explicit zephyr_bluetooth(bluetooth_config config);
+	~zephyr_bluetooth() override;
 	status init() override;
 	void stop() override;
 	status send(data_view data, session_t session) override;
@@ -33,9 +34,12 @@ private: // Zephyr callbacks
 
 	struct raw_event
 	{
-		enum class type : std::uint8_t { connected, disconnected, rx } kind;
+		enum class type : std::uint8_t { connected, disconnected, link_updated, rx } kind;
 		bt_conn* connection;
 		std::uint8_t reason;
+		bluetooth_link link;
+		std::array<std::uint8_t, event_payload_capacity> payload;
+		std::size_t size;
 	};
 
 	struct queued_event
@@ -47,9 +51,11 @@ private: // Zephyr callbacks
 	static void on_connected(bt_conn* conn, std::uint8_t err);
 	static void on_disconnected(bt_conn* conn, std::uint8_t reason);
 	static void on_recycled();
+	static status on_rx_received(void *context, bt_conn *connection, data_view data);
+	static void on_gatt_changed(void *context, bt_conn *connection);
 
 	[[nodiscard]] status check_state() const;
-	void push_event(raw_event::type kind, connection_ref &connection, std::uint8_t reason);
+	status push_event(raw_event::type kind, connection_ref &connection, std::uint8_t reason, data_view data = {});
 	result<queued_event> receive_event(std::uint32_t timeout_ms);
 
 	[[nodiscard]] bluetooth_event from_raw_event(const raw_event &event) const;
@@ -64,6 +70,8 @@ private:
 	bt_data advertise_data_[2]{};
 
 	connection_ref active_connection_;
+	bluetooth_link link_{};
+	session_t last_session_ = 0;
 	bool initialized_{false};
 	bool overflow_ = false;
 };

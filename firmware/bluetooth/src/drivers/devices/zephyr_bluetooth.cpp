@@ -1,4 +1,5 @@
 #include "drivers/devices/zephyr_bluetooth.h"
+#include "core/zephyr_error.h"
 
 #include <cstring>
 #include <type_traits>
@@ -14,40 +15,7 @@ namespace
 zephyr_bluetooth *instance = nullptr;
 k_spinlock callback_lock{};
 
-error_code from_zephyr_error(int code)
-{
-	switch (code)
-	{
-	case -EALREADY:
-	case -EEXIST:
-		return error_code::already_initialized;
-	case -EINVAL:
-	case -EMSGSIZE:
-		return error_code::invalid_config;
-	case -ENOSYS:
-	case -ENOTSUP:
-		return error_code::not_supported;
-	case -ENODEV:
-	case -EHOSTDOWN:
-		return error_code::not_ready;
-	case -ETIMEDOUT:
-		return error_code::timeout;
-	case -EAGAIN:
-	case -EBUSY:
-		return error_code::busy;
-	case -ENOMEM:
-	case -ENOBUFS:
-		return error_code::no_resources;
-	case -ENOTCONN:
-	case -ECONNRESET:
-		return error_code::not_connected;
-	case -EACCES:
-	case -EPERM:
-		return error_code::access_denied;
-	default:
-		return error_code::io;
-	}
-}
+
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -58,6 +26,11 @@ zephyr_bluetooth::zephyr_bluetooth(bluetooth_config config) : config_(config), e
 }
 
 //////////////////////////////////////////////////////////////////////////
+
+zephyr_bluetooth::~zephyr_bluetooth()
+{
+	stop();
+}
 
 status zephyr_bluetooth::init()
 {
@@ -124,7 +97,21 @@ status zephyr_bluetooth::init()
 		return fail(component::bluetooth, error_code::already_initialized);
 	}
 
-	(void)start_advertise();
+	if (const auto bound = gatt_.bind(gatt_callbacks{
+		.context = this,
+		.received = on_rx_received,
+		.changed = on_gatt_changed
+	}); !bound)
+	{
+		stop();
+		return bound;
+	}
+
+	if (const auto advertised = start_advertise(); !advertised)
+	{
+		stop();
+		return advertised;
+	}
 
 	return {};
 }
@@ -143,6 +130,7 @@ void zephyr_bluetooth::stop()
 
 		instance = nullptr;
 		initialized_ = false;
+		link_ = {};
 		connection = std::move(active_connection_);
 	}
 
@@ -165,7 +153,28 @@ void zephyr_bluetooth::stop()
 
 status zephyr_bluetooth::send(data_view data, session_t session)
 {
-	return fail(component::bluetooth, error_code::not_implemented);
+	connection_ref connection;
+	{
+		spin_lock_guard guard{callback_lock};
+		if (!initialized_)
+		{
+			return fail(component::bluetooth, error_code::not_initialized);
+		}
+
+		if (overflow_)
+		{
+			return fail(component::bluetooth, error_code::overflow);
+		}
+
+		if (!active_connection_ || session == 0 || session != link_.session)
+		{
+			return fail(component::bluetooth, error_code::not_connected);
+		}
+
+		connection = retain_connection(active_connection_.get());
+	}
+
+	return gatt_.notify(connection.get(), data);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -264,67 +273,88 @@ result<zephyr_bluetooth::queued_event> zephyr_bluetooth::receive_event(std::uint
 
 //////////////////////////////////////////////////////////////////////////
 
-void zephyr_bluetooth::push_event(raw_event::type kind, connection_ref &connection, std::uint8_t reason)
+status zephyr_bluetooth::push_event(raw_event::type kind, connection_ref &connection, std::uint8_t reason, data_view data)
 {
-	const raw_event event{
-		kind,
-		connection.get(),
-		reason
+	raw_event event{
+		.kind = kind,
+		.connection = connection.get(),
+		.reason = reason,
+		.link = link_,
+		.payload = {},
+		.size = data.size
 	};
+	if (data.size != 0)
+	{
+		std::memcpy(event.payload.data(), data.data, data.size);
+	}
+
 	if (overflow_ || k_msgq_put(&event_queue_, &event, K_NO_WAIT) != 0)
 	{
 		overflow_ = true;
-		return;
+		return fail(component::bluetooth, error_code::overflow);
 	}
 
 	(void)connection.release();
+	return {};
 }
 
 //////////////////////////////////////////////////////////////////////////
 
 bluetooth_event zephyr_bluetooth::from_raw_event(const raw_event &event) const
 {
-	bluetooth_event ble_event;
+	bluetooth_event result;
+	result.link = event.link;
 
-	switch (event.kind)
+	if (event.kind == raw_event::type::rx)
 	{
-		case raw_event::type::connected:
-		{
-			ble_event.type = bluetooth_event::kind::link_changed;
-			ble_event.link.connected = true;
-			break;
-		}
-		case raw_event::type::disconnected:
-		{
-			ble_event.type = bluetooth_event::kind::link_changed;
-			ble_event.link.connected = false;
-			break;
-		}
-		case raw_event::type::rx:
-			ble_event.type = bluetooth_event::kind::received;
-			break;
+		result.type = bluetooth_event::kind::received;
+		result.payload = event.payload;
+		result.size = event.size;
+	}
+	else
+	{
+		result.type = bluetooth_event::kind::link_changed;
 	}
 
-	return ble_event;
+	return result;
 }
 
 //////////////////////////////////////////////////////////////////////////
 
 void zephyr_bluetooth::on_connected(bt_conn *conn, std::uint8_t err)
 {
+	if (err != 0 || conn == nullptr)
+	{
+		return;
+	}
+
+	const auto max_payload = zephyr_gatt_server::max_payload(conn);
+
 	connection_ref previous;
 	connection_ref pending;
 	{
 		spin_lock_guard guard{callback_lock};
-		if (err != 0 || instance == nullptr)
+		if (instance == nullptr)
 		{
 			return;
 		}
 
 		previous = std::move(instance->active_connection_);
 		instance->active_connection_ = retain_connection(conn);
+		if (++instance->last_session_ == 0)
+		{
+			++instance->last_session_;
+		}
+
+		instance->link_ = bluetooth_link{
+			.connected = true,
+			.subscribed = false,
+			.max_payload = max_payload,
+			.session = instance->last_session_
+		};
+
 		pending = retain_connection(conn);
-		instance->push_event(raw_event::type::connected, pending, 0);
+		(void)instance->push_event(raw_event::type::connected, pending, 0);
 	}
 }
 
@@ -336,18 +366,19 @@ void zephyr_bluetooth::on_disconnected(bt_conn *conn, std::uint8_t reason)
 	connection_ref pending;
 	{
 		spin_lock_guard guard{callback_lock};
-		if (instance == nullptr)
+		if (instance == nullptr || instance->active_connection_.get() != conn)
 		{
 			return;
 		}
 
-		if (instance->active_connection_.get() == conn)
-		{
-			previous = std::move(instance->active_connection_);
-		}
+		previous = std::move(instance->active_connection_);
+
+		instance->link_.connected = false;
+		instance->link_.subscribed = false;
+		instance->link_.max_payload = 0;
 
 		pending = retain_connection(conn);
-		instance->push_event(raw_event::type::disconnected, pending, reason);
+		(void)instance->push_event(raw_event::type::disconnected, pending, reason);
 	}
 }
 
@@ -360,4 +391,63 @@ void zephyr_bluetooth::on_recycled()
 
 //////////////////////////////////////////////////////////////////////////
 
+status zephyr_bluetooth::on_rx_received(void *context, bt_conn *connection, data_view data)
+{
+	if (data.size > event_payload_capacity || (data.size != 0 && data.data == nullptr))
+	{
+		return fail(component::bluetooth, error_code::invalid_config);
+	}
+
+	auto &self = *static_cast<zephyr_bluetooth *>(context);
+	connection_ref pending;
+	{
+		spin_lock_guard guard{callback_lock};
+		if (instance != &self || !self.initialized_)
+		{
+			return fail(component::bluetooth, error_code::not_initialized);
+		}
+
+		if (self.active_connection_.get() != connection || connection == nullptr)
+		{
+			return fail(component::bluetooth, error_code::not_connected);
+		}
+
+		pending = retain_connection(connection);
+		return self.push_event(raw_event::type::rx, pending, 0, data);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_bluetooth::on_gatt_changed(void *context, bt_conn *changed_connection)
+{
+	auto &self = *static_cast<zephyr_bluetooth *>(context);
+	connection_ref connection;
+	bluetooth_link link;
+	{
+		spin_lock_guard guard{callback_lock};
+		if (instance != &self || !self.active_connection_ ||
+			(changed_connection != nullptr && changed_connection != self.active_connection_.get()))
+		{
+			return;
+		}
+
+		connection = retain_connection(self.active_connection_.get());
+		link = self.link_;
+	}
+
+	link.subscribed = self.gatt_.is_subscribed(connection.get());
+	link.max_payload = zephyr_gatt_server::max_payload(connection.get());
+
+	{
+		spin_lock_guard guard{callback_lock};
+		if (instance != &self || self.active_connection_.get() != connection.get() || self.link_.session != link.session)
+		{
+			return;
+		}
+
+		self.link_ = link;
+		(void)self.push_event(raw_event::type::link_updated, connection, 0);
+	}
+}
 }

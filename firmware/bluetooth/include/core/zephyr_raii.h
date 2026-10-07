@@ -39,4 +39,24 @@ private:
 	k_spinlock &lock_;
 	k_spinlock_key_t key_;
 };
+
+class mutex_lock_guard
+{
+public:
+	explicit mutex_lock_guard(k_mutex &lock) : lock_(lock)
+	{
+		(void)k_mutex_lock(&lock_, K_FOREVER);
+	}
+
+	~mutex_lock_guard()
+	{
+		(void)k_mutex_unlock(&lock_);
+	}
+
+	mutex_lock_guard(const mutex_lock_guard &) = delete;
+	mutex_lock_guard &operator=(const mutex_lock_guard &) = delete;
+
+private:
+	k_mutex &lock_;
+};
 }
