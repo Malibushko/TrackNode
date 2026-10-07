@@ -1,6 +1,7 @@
 set(TRACK_NODE_BLUETOOTH_SDK_ROOT "" CACHE PATH "nRF Connect SDK west workspace")
 set(TRACK_NODE_BLUETOOTH_BOARD "xiao_ble/nrf52840" CACHE STRING "Zephyr Bluetooth board")
 set(TRACK_NODE_BLUETOOTH_GNUARMEMB_ROOT "" CACHE PATH "Optional GNU Arm Embedded toolchain root")
+set(TRACK_NODE_BLUETOOTH_UF2_DIRECTORY "" CACHE PATH "XIAO UF2 drive directory; empty enables automatic detection")
 find_program(TRACK_NODE_WEST_EXECUTABLE NAMES west DOC "west from the Nordic toolchain environment")
 
 add_custom_target(bluetooth
@@ -27,3 +28,17 @@ add_custom_target(bluetooth
     USES_TERMINAL
     VERBATIM
 )
+
+if(CMAKE_HOST_WIN32)
+    find_program(TRACK_NODE_POWERSHELL_EXECUTABLE NAMES powershell pwsh REQUIRED)
+
+    add_custom_target(bluetooth_flash
+        COMMAND "${TRACK_NODE_POWERSHELL_EXECUTABLE}" -NoProfile -NonInteractive -ExecutionPolicy Bypass
+            -File "${PROJECT_SOURCE_DIR}/firmware/bluetooth/cmake/flash.ps1"
+            -Firmware "${PROJECT_BINARY_DIR}/bluetooth/zephyr/zephyr.uf2"
+            -Volume "${TRACK_NODE_BLUETOOTH_UF2_DIRECTORY}"
+        DEPENDS bluetooth
+        USES_TERMINAL
+        VERBATIM
+    )
+endif()
