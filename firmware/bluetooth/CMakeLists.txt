@@ -8,6 +8,7 @@ target_sources(app PRIVATE
     src/infrastructure/bridge_service.cpp
     src/drivers/devices/zephyr_uart.cpp
     src/drivers/devices/zephyr_bluetooth.cpp
+    src/drivers/devices/zephyr_gatt_server.cpp
     ../../src/drivers/protocols/bridge_codec.cpp
     ../../src/drivers/protocols/bridge_stream_parser.cpp
 )

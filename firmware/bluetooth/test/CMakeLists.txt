@@ -7,7 +7,9 @@ target_include_directories(zephyr_uart_test PRIVATE fake ../include ../../../lib
 target_compile_options(zephyr_uart_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME zephyr_uart_test COMMAND zephyr_uart_test)
 
-add_executable(zephyr_bluetooth_init_test zephyr_bluetooth_init_test.cpp ../src/drivers/devices/zephyr_bluetooth.cpp)
+add_executable(zephyr_bluetooth_init_test zephyr_bluetooth_init_test.cpp
+    ../src/drivers/devices/zephyr_bluetooth.cpp
+    ../src/drivers/devices/zephyr_gatt_server.cpp)
 target_compile_features(zephyr_bluetooth_init_test PRIVATE cxx_std_20)
 target_include_directories(zephyr_bluetooth_init_test PRIVATE fake ../include ../../../lib/expected/include)
 target_compile_options(zephyr_bluetooth_init_test PRIVATE -Wall -Wextra -Wno-unused-parameter)

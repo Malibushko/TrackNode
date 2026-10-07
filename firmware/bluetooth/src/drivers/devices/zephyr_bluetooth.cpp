@@ -7,7 +7,6 @@
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci_types.h>
 
-
 namespace ble
 {
 namespace
@@ -51,10 +50,18 @@ error_code from_zephyr_error(int code)
 }
 }
 
-zephyr_bluetooth::zephyr_bluetooth(bluetooth_config config) : config_(config), event_queue_buffer{}
+//////////////////////////////////////////////////////////////////////////
+
+zephyr_bluetooth::zephyr_bluetooth(bluetooth_config config) : config_(config), gatt_(gatt_config{
+	.service_uuid = config.service_uuid,
+	.rx_uuid = config.rx_uuid,
+	.tx_uuid = config.tx_uuid
+}), event_queue_buffer{}
 {
 
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status zephyr_bluetooth::init()
 {
@@ -103,8 +110,6 @@ status zephyr_bluetooth::init()
 	advertise_data_[0] = BT_DATA(BT_DATA_FLAGS, &flags, sizeof(flags));
 	advertise_data_[1] = BT_DATA(BT_DATA_NAME_COMPLETE, config_.name, static_cast<uint8_t>(std::strlen(config_.name)));
 
-	// TODO: add GATT server setup
-
 	bool published = false;
 	{
 		spin_lock_guard guard{callback_lock};
@@ -123,8 +128,12 @@ status zephyr_bluetooth::init()
 		return fail(component::bluetooth, error_code::already_initialized);
 	}
 
+	(void)start_advertise();
+
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 void zephyr_bluetooth::stop()
 {
@@ -143,6 +152,7 @@ void zephyr_bluetooth::stop()
 
 	bt_le_adv_stop();
 	bt_conn_cb_unregister(&connection_callback_);
+	gatt_.unregister_service();
 	if (connection)
 	{
 		bt_conn_disconnect(connection.get(), BT_HCI_ERR_REMOTE_USER_TERM_CONN);
@@ -155,10 +165,14 @@ void zephyr_bluetooth::stop()
 	k_msgq_purge(&event_queue_);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status zephyr_bluetooth::send(data_view data, session_t session)
 {
 	return fail(component::bluetooth, error_code::not_implemented);
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 result<bluetooth_event> zephyr_bluetooth::poll(std::uint32_t timeout_ms)
 {
@@ -186,6 +200,8 @@ result<bluetooth_event> zephyr_bluetooth::poll(std::uint32_t timeout_ms)
 	return from_raw_event(event->data);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status zephyr_bluetooth::start_advertise()
 {
 	const int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, advertise_data_, std::size(advertise_data_), nullptr, 0);
@@ -197,6 +213,8 @@ status zephyr_bluetooth::start_advertise()
 	return fail(component::bluetooth, from_zephyr_error(err));
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status zephyr_bluetooth::stop_advertise()
 {
 	const int err = bt_le_adv_stop();
@@ -207,6 +225,8 @@ status zephyr_bluetooth::stop_advertise()
 
 	return fail(component::bluetooth, from_zephyr_error(err));
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 status zephyr_bluetooth::check_state() const
 {
@@ -223,6 +243,8 @@ status zephyr_bluetooth::check_state() const
 
 	return {};
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 result<zephyr_bluetooth::queued_event> zephyr_bluetooth::receive_event(std::uint32_t timeout_ms)
 {
@@ -244,6 +266,8 @@ result<zephyr_bluetooth::queued_event> zephyr_bluetooth::receive_event(std::uint
 	};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void zephyr_bluetooth::push_event(raw_event::type kind, connection_ref &connection, std::uint8_t reason)
 {
 	const raw_event event{
@@ -257,8 +281,10 @@ void zephyr_bluetooth::push_event(raw_event::type kind, connection_ref &connecti
 		return;
 	}
 
-	connection.release();
+	(void)connection.release();
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 bluetooth_event zephyr_bluetooth::from_raw_event(const raw_event &event) const
 {
@@ -286,6 +312,8 @@ bluetooth_event zephyr_bluetooth::from_raw_event(const raw_event &event) const
 	return ble_event;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void zephyr_bluetooth::on_connected(bt_conn *conn, std::uint8_t err)
 {
 	connection_ref previous;
@@ -303,6 +331,8 @@ void zephyr_bluetooth::on_connected(bt_conn *conn, std::uint8_t err)
 		instance->push_event(raw_event::type::connected, pending, 0);
 	}
 }
+
+//////////////////////////////////////////////////////////////////////////
 
 void zephyr_bluetooth::on_disconnected(bt_conn *conn, std::uint8_t reason)
 {
@@ -325,8 +355,13 @@ void zephyr_bluetooth::on_disconnected(bt_conn *conn, std::uint8_t reason)
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void zephyr_bluetooth::on_recycled()
 {
 	// Empty
 }
+
+//////////////////////////////////////////////////////////////////////////
+
 }

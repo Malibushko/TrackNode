@@ -3,6 +3,7 @@
 #include "core/zephyr_raii.h"
 
 #include "drivers/bluetooth_backend.h"
+#include "drivers/devices/zephyr_gatt_server.h"
 #include "zephyr/kernel.h"
 #include "zephyr/bluetooth/conn.h"
 
@@ -50,14 +51,16 @@ private: // Zephyr callbacks
 	static void on_disconnected(bt_conn* conn, std::uint8_t reason);
 	static void on_recycled();
 
-	status check_state() const;
+	[[nodiscard]] status check_state() const;
 	void push_event(raw_event::type kind, connection_ref &connection, std::uint8_t reason);
 	result<queued_event> receive_event(std::uint32_t timeout_ms);
 
-	bluetooth_event from_raw_event(const raw_event &event) const;
+	[[nodiscard]] bluetooth_event from_raw_event(const raw_event &event) const;
 
 private:
 	bluetooth_config config_;
+	zephyr_gatt_server gatt_;
+
 	k_msgq event_queue_{};
 	bt_conn_cb connection_callback_{};
 	char event_queue_buffer[event_queue_depth * sizeof(raw_event)];
