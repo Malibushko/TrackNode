@@ -96,7 +96,6 @@ int main()
 		registered_callback->connected(&connection, 0);
 	}
 	require(connection.references == 10);
-	require(bluetooth.poll(0).error().code == ble::error_code::not_implemented);
 	registered_callback->connected(&connection, 0);
 	require(connection.references == 10);
 	require(bluetooth.poll(0).error().code == ble::error_code::overflow);
@@ -108,7 +107,7 @@ int main()
 	require(connection.disconnects == 1);
 
 	require(bluetooth.init().has_value());
-	require(bluetooth.poll(0).error().code == ble::error_code::not_implemented);
+	require(bluetooth.poll(0)->type == ble::bluetooth_event::kind::idle);
 	for (int i = 0; i < 8; ++i)
 	{
 		registered_callback->connected(&connection, 0);
@@ -119,6 +118,47 @@ int main()
 	bluetooth.stop();
 	require(connection.references == 1);
 	require(connection.disconnects == 1);
+
+	require(spinlock_depth == 0);
+	{
+		auto original = ble::retain_connection(&connection);
+		require(connection.references == 2);
+		auto moved = std::move(original);
+		require(!original && moved.get() == &connection);
+		require(connection.references == 2);
+	}
+	require(connection.references == 1);
+
+	require(bluetooth.init().has_value());
+	registered_callback->connected(&connection, 0);
+	const auto connected = bluetooth.poll(0);
+	require(connected && connected->type == ble::bluetooth_event::kind::link_changed);
+	require(connected->link.connected && connection.references == 2);
+	registered_callback->disconnected(&connection, 0x13);
+	const auto disconnected = bluetooth.poll(0);
+	require(disconnected && !disconnected->link.connected);
+	require(connection.references == 1);
+	pump = {};
+	require(bluetooth.poll(5)->type == ble::bluetooth_event::kind::idle);
+	msgq_get_hook = [&]
+	{
+		for (int i = 0; i < 9; ++i)
+		{
+			registered_callback->connected(&connection, 0);
+		}
+	};
+	require(bluetooth.poll(0).error().code == ble::error_code::overflow);
+	msgq_get_hook = {};
+	require(connection.references == 9);
+	bluetooth.stop();
+	require(connection.references == 1);
+	require(spinlock_depth == 0);
+
+	require(bluetooth.init().has_value());
+	msgq_get_hook = [&] { bluetooth.stop(); };
+	require(bluetooth.poll(0).error().code == ble::error_code::not_initialized);
+	msgq_get_hook = {};
+	require(spinlock_depth == 0);
 
 	std::cout << "Bluetooth rollback, retry, stop/reinit and error mapping passed\n";
 	return 0;

@@ -12,12 +12,18 @@ inline constexpr k_timeout_t K_MSEC(std::uint32_t ms)
 {
 	return ms;
 }
+using k_spinlock_key_t = int;
+inline int spinlock_depth = 0;
 struct k_spinlock {};
 inline int k_spin_lock(k_spinlock *)
 {
+	++spinlock_depth;
 	return 0;
 }
-inline void k_spin_unlock(k_spinlock *, int) {}
+inline void k_spin_unlock(k_spinlock *, int)
+{
+	--spinlock_depth;
+}
 struct k_sem
 {
 	unsigned count = 0;
@@ -92,8 +98,22 @@ inline int k_msgq_put(k_msgq *q, const void *item, k_timeout_t)
 	++q->count;
 	return 0;
 }
-inline int k_msgq_get(k_msgq *q, void *item, k_timeout_t)
+inline std::function<void()> msgq_get_hook;
+inline int k_msgq_get(k_msgq *q, void *item, k_timeout_t timeout)
 {
+	if (msgq_get_hook)
+	{
+		msgq_get_hook();
+	}
+	const auto deadline = simulated_time + timeout;
+	while (q->count == 0 && simulated_time < deadline)
+	{
+		if (pump)
+		{
+			pump();
+		}
+		++simulated_time;
+	}
 	if (q->count == 0)
 	{
 		return -ENOMSG;

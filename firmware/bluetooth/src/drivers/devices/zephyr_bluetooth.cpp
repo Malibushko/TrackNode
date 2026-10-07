@@ -1,12 +1,11 @@
 #include "drivers/devices/zephyr_bluetooth.h"
 
 #include <cstring>
+#include <type_traits>
+#include <utility>
 #include <cerrno>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci_types.h>
-
-
-
 
 
 namespace ble
@@ -59,12 +58,12 @@ zephyr_bluetooth::zephyr_bluetooth(bluetooth_config config) : config_(config), e
 
 status zephyr_bluetooth::init()
 {
-	const auto initial_key = k_spin_lock(&callback_lock);
-	const bool occupied = initialized_ || instance != nullptr;
-	k_spin_unlock(&callback_lock, initial_key);
-	if (occupied)
 	{
-		return fail(component::bluetooth, error_code::already_initialized);
+		spin_lock_guard guard{callback_lock};
+		if (initialized_ || instance != nullptr)
+		{
+			return fail(component::bluetooth, error_code::already_initialized);
+		}
 	}
 
 	if (config_.name == nullptr || config_.service_uuid == nullptr)
@@ -72,6 +71,7 @@ status zephyr_bluetooth::init()
 		return fail(component::bluetooth, error_code::invalid_config);
 	}
 
+	static_assert(std::is_trivially_copyable_v<raw_event>);
 	k_msgq_init(&event_queue_, event_queue_buffer, sizeof(raw_event), event_queue_depth);
 
 	connection_callback_.connected = &zephyr_bluetooth::on_connected;
@@ -105,52 +105,51 @@ status zephyr_bluetooth::init()
 
 	// TODO: add GATT server setup
 
-	const auto key = k_spin_lock(&callback_lock);
-	if (instance != nullptr)
+	bool published = false;
 	{
-		k_spin_unlock(&callback_lock, key);
+		spin_lock_guard guard{callback_lock};
+		if (instance == nullptr)
+		{
+			overflow_ = false;
+			initialized_ = true;
+			instance = this;
+			published = true;
+		}
+	}
+
+	if (!published)
+	{
 		bt_conn_cb_unregister(&connection_callback_);
 		return fail(component::bluetooth, error_code::already_initialized);
 	}
-
-	overflow_ = false;
-	initialized_ = true;
-	instance = this;
-	k_spin_unlock(&callback_lock, key);
 
 	return {};
 }
 
 void zephyr_bluetooth::stop()
 {
-	const auto key = k_spin_lock(&callback_lock);
-	if (!initialized_)
+	connection_ref connection;
 	{
-		k_spin_unlock(&callback_lock, key);
-		return;
-	}
+		spin_lock_guard guard{callback_lock};
+		if (!initialized_)
+		{
+			return;
+		}
 
-	instance = nullptr;
-	initialized_ = false;
-	bt_conn *connection = active_connection_;
-	active_connection_ = nullptr;
-	k_spin_unlock(&callback_lock, key);
+		instance = nullptr;
+		initialized_ = false;
+		connection = std::move(active_connection_);
+	}
 
 	bt_le_adv_stop();
 	bt_conn_cb_unregister(&connection_callback_);
-	if (connection != nullptr)
+	if (connection)
 	{
-		bt_conn_disconnect(connection, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-		bt_conn_unref(connection);
+		bt_conn_disconnect(connection.get(), BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 	}
 
-	raw_event event{};
-	while (k_msgq_get(&event_queue_, &event, K_NO_WAIT) == 0)
+	while (receive_event(0))
 	{
-		if (event.connection != nullptr)
-		{
-			bt_conn_unref(event.connection);
-		}
 	}
 
 	k_msgq_purge(&event_queue_);
@@ -163,22 +162,28 @@ status zephyr_bluetooth::send(data_view data, session_t session)
 
 result<bluetooth_event> zephyr_bluetooth::poll(std::uint32_t timeout_ms)
 {
-	const auto key = k_spin_lock(&callback_lock);
-	const bool ready = initialized_;
-	const bool overflow = overflow_;
-	k_spin_unlock(&callback_lock, key);
-
-	if (!ready)
+	if (const auto state = check_state(); !state)
 	{
-		return fail(component::bluetooth, error_code::not_initialized);
+		return tl::unexpected(state.error());
 	}
 
-	if (overflow)
+	auto event = receive_event(timeout_ms);
+	if (const auto state = check_state(); !state)
 	{
-		return fail(component::bluetooth, error_code::overflow);
+		return tl::unexpected(state.error());
 	}
 
-	return fail(component::bluetooth, error_code::not_implemented);
+	if (!event)
+	{
+		if (event.error().code == error_code::timeout)
+		{
+			return bluetooth_event{};
+		}
+
+		return tl::unexpected(event.error());
+	}
+
+	return from_raw_event(event->data);
 }
 
 status zephyr_bluetooth::start_advertising()
@@ -203,79 +208,120 @@ status zephyr_bluetooth::stop_advertising()
 	return fail(component::bluetooth, from_zephyr_error(err));
 }
 
-bool zephyr_bluetooth::push_event(const raw_event &event)
+status zephyr_bluetooth::check_state() const
 {
+	spin_lock_guard guard{callback_lock};
+	if (!initialized_)
+	{
+		return fail(component::bluetooth, error_code::not_initialized);
+	}
+
+	if (overflow_)
+	{
+		return fail(component::bluetooth, error_code::overflow);
+	}
+
+	return {};
+}
+
+result<zephyr_bluetooth::queued_event> zephyr_bluetooth::receive_event(std::uint32_t timeout_ms)
+{
+	raw_event event{};
+	const int err = k_msgq_get(&event_queue_, &event, K_MSEC(timeout_ms));
+	if (err == -ENOMSG || err == -EAGAIN)
+	{
+		return fail(component::bluetooth, error_code::timeout);
+	}
+
+	if (err != 0)
+	{
+		return fail(component::bluetooth, from_zephyr_error(err));
+	}
+
+	return queued_event{
+		event,
+		connection_ref{event.connection}
+	};
+}
+
+void zephyr_bluetooth::push_event(raw_event::type kind, connection_ref &connection, std::uint8_t reason)
+{
+	const raw_event event{
+		kind,
+		connection.get(),
+		reason
+	};
 	if (overflow_ || k_msgq_put(&event_queue_, &event, K_NO_WAIT) != 0)
 	{
 		overflow_ = true;
-		return false;
+		return;
 	}
 
-	return true;
+	connection.release();
+}
+
+bluetooth_event zephyr_bluetooth::from_raw_event(const raw_event &event) const
+{
+	bluetooth_event ble_event;
+
+	switch (event.kind)
+	{
+		case raw_event::type::connected:
+		{
+			ble_event.type = bluetooth_event::kind::link_changed;
+			ble_event.link.connected = true;
+			break;
+		}
+		case raw_event::type::disconnected:
+		{
+			ble_event.type = bluetooth_event::kind::link_changed;
+			ble_event.link.connected = false;
+			break;
+		}
+		case raw_event::type::rx:
+			ble_event.type = bluetooth_event::kind::received;
+			break;
+	}
+
+	return ble_event;
 }
 
 void zephyr_bluetooth::on_connected(bt_conn *conn, std::uint8_t err)
 {
-	const auto key = k_spin_lock(&callback_lock);
-	if (err != 0 || instance == nullptr)
+	connection_ref previous;
+	connection_ref pending;
 	{
-		k_spin_unlock(&callback_lock, key);
-		return;
-	}
+		spin_lock_guard guard{callback_lock};
+		if (err != 0 || instance == nullptr)
+		{
+			return;
+		}
 
-	bt_conn *previous = instance->active_connection_;
-	instance->active_connection_ = bt_conn_ref(conn);
-	const raw_event event{
-		raw_event::type::connected,
-		bt_conn_ref(conn),
-		0
-	};
-	const bool queued = instance->push_event(event);
-	k_spin_unlock(&callback_lock, key);
-
-	if (previous != nullptr)
-	{
-		bt_conn_unref(previous);
-	}
-
-	if (!queued)
-	{
-		bt_conn_unref(event.connection);
+		previous = std::move(instance->active_connection_);
+		instance->active_connection_ = retain_connection(conn);
+		pending = retain_connection(conn);
+		instance->push_event(raw_event::type::connected, pending, 0);
 	}
 }
 
 void zephyr_bluetooth::on_disconnected(bt_conn *conn, std::uint8_t reason)
 {
-	const auto key = k_spin_lock(&callback_lock);
-	if (instance == nullptr)
+	connection_ref previous;
+	connection_ref pending;
 	{
-		k_spin_unlock(&callback_lock, key);
-		return;
-	}
+		spin_lock_guard guard{callback_lock};
+		if (instance == nullptr)
+		{
+			return;
+		}
 
-	bt_conn *previous = nullptr;
-	if (instance->active_connection_ == conn)
-	{
-		previous = instance->active_connection_;
-		instance->active_connection_ = nullptr;
-	}
+		if (instance->active_connection_.get() == conn)
+		{
+			previous = std::move(instance->active_connection_);
+		}
 
-	const raw_event event{
-		raw_event::type::disconnected,
-		bt_conn_ref(conn),
-		reason
-	};
-	const bool queued = instance->push_event(event);
-	k_spin_unlock(&callback_lock, key);
-
-	if (previous != nullptr)
-	{
-		bt_conn_unref(previous);
-	}
-
-	if (!queued)
-	{
-		bt_conn_unref(event.connection);
+		pending = retain_connection(conn);
+		instance->push_event(raw_event::type::disconnected, pending, reason);
 	}
 }
 

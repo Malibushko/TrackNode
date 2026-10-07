@@ -1,6 +1,7 @@
 #pragma once
 #include <zephyr/bluetooth/bluetooth.h>
 #include <cstdlib>
+#include <zephyr/kernel.h>
 struct bt_conn
 {
 	int references = 1;
@@ -14,7 +15,7 @@ inline bt_conn *bt_conn_ref(bt_conn *connection)
 inline void bt_conn_unref(bt_conn *connection)
 {
 	--connection->references;
-	if (connection->references < 1)
+	if (connection->references < 1 || spinlock_depth != 0)
 	{
 		std::abort();
 	}

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <queue>
+#include "core/zephyr_raii.h"
 
 #include "drivers/bluetooth_backend.h"
 #include "zephyr/kernel.h"
@@ -40,11 +40,21 @@ private: // Zephyr callbacks
 		std::uint8_t reason;
 	};
 
+	struct queued_event
+	{
+		raw_event data;
+		connection_ref connection;
+	};
+
 	static void on_connected(bt_conn* conn, std::uint8_t err);
 	static void on_disconnected(bt_conn* conn, std::uint8_t reason);
 	static void on_recycled();
 
-	bool push_event(const raw_event &event);
+	status check_state() const;
+	void push_event(raw_event::type kind, connection_ref &connection, std::uint8_t reason);
+	result<queued_event> receive_event(std::uint32_t timeout_ms);
+
+	bluetooth_event from_raw_event(const raw_event &event) const;
 
 private:
 	bluetooth_config config_;
@@ -53,7 +63,7 @@ private:
 	char event_queue_buffer[event_queue_depth * sizeof(raw_event)];
 	bt_data advertise_data_[2]{};
 
-	bt_conn *active_connection_ = nullptr;
+	connection_ref active_connection_;
 	bool initialized_{false};
 	bool overflow_ = false;
 };
