@@ -18,7 +18,6 @@ public:
 
 private:
 	status send_and_wait_for_response(ble_bridge::frame &frame, ble_bridge::frame_type response);
-	void prepare_response_wait(ble_bridge::frame &frame, ble_bridge::frame_type response);
 	status write_frame(const ble_bridge::frame &frame);
 	status wait_for_response();
 	status check_transport_overflow();
@@ -45,7 +44,7 @@ private:
 	std::uint32_t session_counter_ = 0;
 	ble_bridge::session_type remote_session_ = 0;
 	ble_bridge::sequence_type sequence_ = 0;
-	ble_bridge::frame_type expected_ = ble_bridge::frame_type::ready;
+	ble_bridge::frame_type expected_type_ = ble_bridge::frame_type::ready;
 	ble_bridge::sequence_type pending_sequence_ = 0;
 	ble_bridge::session_type pending_session_ = 0;
 	ble_bridge::ack_code response_ = ble_bridge::ack_code::ok;

@@ -32,8 +32,7 @@ status bluetooth_service::start()
 		return fail(component::rtos, error_code::out_of_memory);
 	}
 
-	const auto created = task_create(task_entry, "bluetooth", configMINIMAL_STACK_SIZE * 8,
-		this, tskIDLE_PRIORITY + 1);
+	const auto created = task_create(task_entry, "bluetooth", configMINIMAL_STACK_SIZE * 8, this, tskIDLE_PRIORITY + 1);
 	if (!created)
 	{
 		stop();

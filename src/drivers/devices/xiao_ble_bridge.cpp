@@ -130,27 +130,23 @@ status xiao_ble_bridge::send(std::span<const std::uint8_t> payload, std::uint32_
 
 status xiao_ble_bridge::send_and_wait_for_response(ble_bridge::frame &frame, ble_bridge::frame_type response)
 {
-	prepare_response_wait(frame, response);
-	const auto outcome = write_frame(frame).and_then([&]{ return wait_for_response(); });
-	waiting_ = false;
-	return outcome;
-}
-
-//////////////////////////////////////////////////////////////////////////
-
-void xiao_ble_bridge::prepare_response_wait(ble_bridge::frame &frame, ble_bridge::frame_type response)
-{
 	if (++sequence_ == 0)
 	{
 		++sequence_;
 	}
 
 	frame.sequence = sequence_;
-	expected_ = response;
+	expected_type_ = response;
 	pending_sequence_ = sequence_;
 	pending_session_ = frame.session;
 	answered_ = false;
 	waiting_ = true;
+
+	const auto outcome = write_frame(frame)
+							.and_then([&]{ return wait_for_response(); });
+
+	waiting_ = false;
+	return outcome;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -218,7 +214,7 @@ status xiao_ble_bridge::enqueue(const bluetooth_event &event)
 
 bool xiao_ble_bridge::should_handle_frame(const ble_bridge::frame &frame) const
 {
-	if (waiting_ && expected_ == ble_bridge::frame_type::ready)
+	if (waiting_ && expected_type_ == ble_bridge::frame_type::ready)
 	{
 		return frame.type == ble_bridge::frame_type::ready && frame.sequence == pending_sequence_;
 	}
@@ -254,7 +250,7 @@ status xiao_ble_bridge::handle_frame(const ble_bridge::frame &frame)
 
 status xiao_ble_bridge::handle_ack(const ble_bridge::frame &frame)
 {
-	if (waiting_ && expected_ == frame.type && frame.sequence == pending_sequence_ &&
+	if (waiting_ && expected_type_ == frame.type && frame.sequence == pending_sequence_ &&
 		frame.session == pending_session_ && frame.size == 1)
 	{
 		response_ = static_cast<ble_bridge::ack_code>(frame.payload[0]);
@@ -411,7 +407,7 @@ status xiao_ble_bridge::read_frames(std::uint32_t timeout_ms)
 	}
 
 	return check_transport_overflow()
-		.and_then([&]{ return consume_bytes(std::span{input}.first(*size)); });
+				.and_then([&]{ return consume_bytes(std::span{input}.first(*size)); });
 }
 
 //////////////////////////////////////////////////////////////////////////

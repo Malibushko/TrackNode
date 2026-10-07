@@ -333,10 +333,10 @@ status configure_bluetooth(firmware_composition &application)
 	}
 
 	static uart transport{uart_config{
-	    .instance = nullptr, // TODO select UART interface
-		.tx = pin{}, // TODO
-		.rx = pin{}, // TODO
-	    .alternate = 0, // TODO
+	    .instance = USART6,
+		.tx = pin{ GPIOA,  GPIO_PIN_11 },
+		.rx = pin{ GPIOA, GPIO_PIN_12 },
+	    .alternate = GPIO_AF8_USART6,
 	    .baud_rate = 115200,
 	    .mode = UART_MODE_TX_RX,
 	    .rx_buffer_size = 1024,
