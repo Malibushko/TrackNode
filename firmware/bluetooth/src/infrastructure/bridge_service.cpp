@@ -10,7 +10,10 @@ status bridge_service::start()
 	return fail(component::service, error_code::not_implemented);
 }
 
-void bridge_service::stop() {}
+void bridge_service::stop()
+{
+
+}
 
 status bridge_service::poll()
 {

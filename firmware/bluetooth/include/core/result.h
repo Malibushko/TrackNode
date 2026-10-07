@@ -21,7 +21,13 @@ enum class error_code
 	not_ready,
 	not_supported,
 	timeout,
-	io
+	io,
+	already_initialized,
+	busy,
+	no_resources,
+	not_connected,
+	access_denied,
+	overflow
 };
 
 struct error

@@ -6,7 +6,7 @@
 
 namespace ble
 {
-using session_type = std::uint32_t;
+using session_t = std::uint32_t;
 constexpr std::size_t event_payload_capacity = 128;
 
 struct bluetooth_link
@@ -14,7 +14,7 @@ struct bluetooth_link
 	bool connected = false;
 	bool subscribed = false;
 	std::uint16_t max_payload = 0;
-	session_type session = 0;
+	session_t session = 0;
 };
 
 struct bluetooth_event
