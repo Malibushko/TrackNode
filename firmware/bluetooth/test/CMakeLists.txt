@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.24)
+project(BluetoothUartTest LANGUAGES CXX)
+enable_testing()
+add_executable(zephyr_uart_test zephyr_uart_test.cpp ../src/drivers/devices/zephyr_uart.cpp)
+target_compile_features(zephyr_uart_test PRIVATE cxx_std_20)
+target_include_directories(zephyr_uart_test PRIVATE fake ../include ../../../lib/expected/include)
+target_compile_options(zephyr_uart_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME zephyr_uart_test COMMAND zephyr_uart_test)

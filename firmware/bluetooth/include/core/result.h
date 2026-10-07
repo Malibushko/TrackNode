@@ -16,7 +16,12 @@ enum class component
 enum class error_code
 {
 	not_initialized,
-	not_implemented
+	not_implemented,
+	invalid_config,
+	not_ready,
+	not_supported,
+	timeout,
+	io
 };
 
 struct error
