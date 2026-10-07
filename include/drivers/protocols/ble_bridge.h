@@ -22,7 +22,9 @@ enum class frame_type : std::uint8_t
 	ready = 0x81,
 	link = 0x82,
 	received = 0x83,
-	ack = 0x84
+	ack = 0x84,
+	advertise = 0x85,
+	stop_advertise = 0x86,
 };
 
 constexpr std::size_t header_size = sizeof(version) + sizeof(frame_type) +

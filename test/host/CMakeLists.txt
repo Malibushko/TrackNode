@@ -89,3 +89,9 @@ add_test(NAME bridge_codec_test COMMAND bridge_codec_test)
 if(MINGW)
     target_link_options(bridge_codec_test PRIVATE -static-libgcc -static-libstdc++)
 endif()
+
+add_executable(bridge_stream_parser_test bridge_stream_parser_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/drivers/protocols/bridge_codec.cpp"
+    "${PROJECT_SOURCE_DIR}/src/drivers/protocols/bridge_stream_parser.cpp")
+target_link_libraries(bridge_stream_parser_test PRIVATE host_headers)
+add_test(NAME bridge_stream_parser_test COMMAND bridge_stream_parser_test)

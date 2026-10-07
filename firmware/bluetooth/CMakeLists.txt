@@ -9,6 +9,7 @@ target_sources(app PRIVATE
     src/drivers/devices/zephyr_uart.cpp
     src/drivers/devices/zephyr_bluetooth.cpp
     ../../src/drivers/protocols/bridge_codec.cpp
+    ../../src/drivers/protocols/bridge_stream_parser.cpp
 )
 
 target_include_directories(app PRIVATE

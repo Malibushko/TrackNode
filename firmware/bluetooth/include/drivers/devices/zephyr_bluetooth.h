@@ -27,8 +27,8 @@ public:
 	status send(data_view data, session_t session) override;
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override;
 
-	status start_advertising();
-	status stop_advertising();
+	status start_advertise() override;
+	status stop_advertise() override;
 
 private: // Zephyr callbacks
 	static constexpr std::size_t event_queue_depth = 8;

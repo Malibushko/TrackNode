@@ -186,7 +186,7 @@ result<bluetooth_event> zephyr_bluetooth::poll(std::uint32_t timeout_ms)
 	return from_raw_event(event->data);
 }
 
-status zephyr_bluetooth::start_advertising()
+status zephyr_bluetooth::start_advertise()
 {
 	const int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, advertise_data_, std::size(advertise_data_), nullptr, 0);
 	if (!err || err == -EALREADY)
@@ -197,7 +197,7 @@ status zephyr_bluetooth::start_advertising()
 	return fail(component::bluetooth, from_zephyr_error(err));
 }
 
-status zephyr_bluetooth::stop_advertising()
+status zephyr_bluetooth::stop_advertise()
 {
 	const int err = bt_le_adv_stop();
 	if (!err || err == -EALREADY)

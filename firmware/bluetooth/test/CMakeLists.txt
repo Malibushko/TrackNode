@@ -12,3 +12,12 @@ target_compile_features(zephyr_bluetooth_init_test PRIVATE cxx_std_20)
 target_include_directories(zephyr_bluetooth_init_test PRIVATE fake ../include ../../../lib/expected/include)
 target_compile_options(zephyr_bluetooth_init_test PRIVATE -Wall -Wextra -Wno-unused-parameter)
 add_test(NAME zephyr_bluetooth_init_test COMMAND zephyr_bluetooth_init_test)
+
+add_executable(bridge_service_test bridge_service_test.cpp
+    ../src/infrastructure/bridge_service.cpp
+    ../../../src/drivers/protocols/bridge_codec.cpp
+    ../../../src/drivers/protocols/bridge_stream_parser.cpp)
+target_compile_features(bridge_service_test PRIVATE cxx_std_20)
+target_include_directories(bridge_service_test PRIVATE ../include ../../../include ../../../lib/expected/include)
+target_compile_options(bridge_service_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME bridge_service_test COMMAND bridge_service_test)

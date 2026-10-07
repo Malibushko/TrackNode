@@ -29,7 +29,17 @@ int main()
 	}};
 
 	static ble_bridge::bridge_codec codec;
-	static ble::bridge_service bridge{transport, bluetooth, codec};
+
+	static ble::bridge_config bridge_config {
+		.transport = transport,
+		.bluetooth = bluetooth,
+		.codec = codec,
+
+		.poll_frequency_ms = 500,
+		.poll_transport_timeout_ms = 100
+	};
+
+	static ble::bridge_service bridge{bridge_config};
 
 	const auto started = bridge.start();
 	if (!started)

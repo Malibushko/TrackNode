@@ -23,6 +23,7 @@ add_custom_target(bluetooth
         "${PROJECT_SOURCE_DIR}/include/drivers/protocols/ble_bridge.h"
         "${PROJECT_SOURCE_DIR}/include/drivers/protocols/bridge_codec.h"
         "${PROJECT_SOURCE_DIR}/src/drivers/protocols/bridge_codec.cpp"
+        "${PROJECT_SOURCE_DIR}/src/drivers/protocols/bridge_stream_parser.cpp"
     USES_TERMINAL
     VERBATIM
 )

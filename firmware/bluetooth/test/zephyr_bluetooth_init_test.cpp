@@ -67,13 +67,13 @@ int main()
 	for (const auto &entry : cases)
 	{
 		advertising_error = entry.native;
-		require(bluetooth.start_advertising().error().code == entry.expected);
-		require(bluetooth.stop_advertising().error().code == entry.expected);
+		require(bluetooth.start_advertise().error().code == entry.expected);
+		require(bluetooth.stop_advertise().error().code == entry.expected);
 	}
 
 	advertising_error = -EALREADY;
-	require(bluetooth.start_advertising().has_value());
-	require(bluetooth.stop_advertising().has_value());
+	require(bluetooth.start_advertise().has_value());
+	require(bluetooth.stop_advertise().has_value());
 	advertising_error = 0;
 	bluetooth.stop();
 	require(registered_callback == nullptr);
