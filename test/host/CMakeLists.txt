@@ -81,3 +81,11 @@ if(MINGW)
         target_link_options(${test_target} PRIVATE -static-libgcc -static-libstdc++)
     endforeach()
 endif()
+
+add_executable(bridge_codec_test bridge_codec_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/drivers/protocols/bridge_codec.cpp")
+target_link_libraries(bridge_codec_test PRIVATE host_headers)
+add_test(NAME bridge_codec_test COMMAND bridge_codec_test)
+if(MINGW)
+    target_link_options(bridge_codec_test PRIVATE -static-libgcc -static-libstdc++)
+endif()

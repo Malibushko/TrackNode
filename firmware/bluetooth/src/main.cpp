@@ -2,7 +2,7 @@
 #include "drivers/devices/zephyr_bluetooth.h"
 #include "drivers/protocols/ble_bridge.h"
 #include "infrastructure/bridge_service.h"
-#include "protocols/bridge_codec.h"
+#include "drivers/protocols/bridge_codec.h"
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
@@ -28,7 +28,7 @@ int main()
 		tx_uuid
 	}};
 
-	static ble::bridge_codec codec;
+	static ble_bridge::bridge_codec codec;
 	static ble::bridge_service bridge{transport, bluetooth, codec};
 
 	const auto started = bridge.start();
