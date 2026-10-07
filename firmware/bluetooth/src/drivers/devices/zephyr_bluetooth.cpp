@@ -52,11 +52,7 @@ error_code from_zephyr_error(int code)
 
 //////////////////////////////////////////////////////////////////////////
 
-zephyr_bluetooth::zephyr_bluetooth(bluetooth_config config) : config_(config), gatt_(gatt_config{
-	.service_uuid = config.service_uuid,
-	.rx_uuid = config.rx_uuid,
-	.tx_uuid = config.tx_uuid
-}), event_queue_buffer{}
+zephyr_bluetooth::zephyr_bluetooth(bluetooth_config config) : config_(config), event_queue_buffer{}
 {
 
 }
@@ -73,7 +69,7 @@ status zephyr_bluetooth::init()
 		}
 	}
 
-	if (config_.name == nullptr || config_.service_uuid == nullptr)
+	if (config_.name == nullptr)
 	{
 		return fail(component::bluetooth, error_code::invalid_config);
 	}
@@ -152,7 +148,7 @@ void zephyr_bluetooth::stop()
 
 	bt_le_adv_stop();
 	bt_conn_cb_unregister(&connection_callback_);
-	gatt_.unregister_service();
+	gatt_.unbind();
 	if (connection)
 	{
 		bt_conn_disconnect(connection.get(), BT_HCI_ERR_REMOTE_USER_TERM_CONN);

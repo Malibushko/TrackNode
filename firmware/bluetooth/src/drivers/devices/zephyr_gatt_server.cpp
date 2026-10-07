@@ -1,20 +1,29 @@
 #include "drivers/devices/zephyr_gatt_server.h"
+#include "drivers/protocols/gatt_uuid.h"
 
 namespace ble
 {
-zephyr_gatt_server::zephyr_gatt_server(gatt_config config) : config_(config)
+namespace
 {
+BT_GATT_SERVICE_DEFINE(
+	tracknode_service,
+	BT_GATT_PRIMARY_SERVICE(&gatt_uuid::service.uuid),
+	BT_GATT_CHARACTERISTIC(&gatt_uuid::rx.uuid, BT_GATT_CHRC_WRITE, BT_GATT_PERM_WRITE, nullptr, zephyr_gatt_server::on_rx_write, nullptr),
+	BT_GATT_CHARACTERISTIC(&gatt_uuid::tx.uuid, BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_NONE, nullptr, nullptr, nullptr),
+	BT_GATT_CCC(nullptr, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
+);
 }
 
-status zephyr_gatt_server::register_service(gatt_callbacks callbacks)
+status zephyr_gatt_server::bind(gatt_callbacks callbacks)
 {
-	(void)callbacks;
+	callbacks_ = callbacks;
 
-	return fail(component::bluetooth, error_code::not_implemented);
+	return {};
 }
 
-void zephyr_gatt_server::unregister_service()
+void zephyr_gatt_server::unbind()
 {
+	callbacks_ = {};
 }
 
 status zephyr_gatt_server::notify(bt_conn *connection, data_view data)

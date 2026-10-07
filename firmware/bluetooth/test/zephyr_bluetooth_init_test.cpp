@@ -14,8 +14,7 @@ void require(bool condition)
 int main()
 {
 	ble::zephyr_bluetooth bluetooth{{
-		.name = "TrackNode",
-		.service_uuid = "e0910001-7e83-4c9c-a89e-bfe03c940001"
+		.name = "TrackNode"
 	}};
 
 	registration_error = -ENOMEM;

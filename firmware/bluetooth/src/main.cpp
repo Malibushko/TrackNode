@@ -10,9 +10,6 @@
 namespace
 {
 constexpr char bluetooth_name[] = "TrackNode";
-constexpr char service_uuid[] = "e0910001-7e83-4c9c-a89e-bfe03c940001";
-constexpr char rx_uuid[] = "e0910002-7e83-4c9c-a89e-bfe03c940001";
-constexpr char tx_uuid[] = "e0910003-7e83-4c9c-a89e-bfe03c940001";
 }
 
 int main()
@@ -22,10 +19,7 @@ int main()
 	}};
 
 	static ble::zephyr_bluetooth bluetooth{ble::bluetooth_config{
-		bluetooth_name,
-		service_uuid,
-		rx_uuid,
-		tx_uuid
+		.name = bluetooth_name
 	}};
 
 	static ble_bridge::bridge_codec codec;

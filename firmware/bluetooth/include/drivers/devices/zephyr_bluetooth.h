@@ -14,9 +14,6 @@ namespace ble
 struct bluetooth_config
 {
 	const char *name = nullptr;
-	const char *service_uuid = nullptr;
-	const char *rx_uuid = nullptr;
-	const char *tx_uuid = nullptr;
 };
 
 class zephyr_bluetooth final : public bluetooth_backend
