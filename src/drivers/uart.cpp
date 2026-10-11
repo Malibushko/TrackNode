@@ -168,7 +168,7 @@ status uart::init()
 		return fail(component::uart, error_code::already_initialized);
 	}
 
-	if (!config_.baud_rate || !IS_UART_MODE(config_.mode) || config_.alternate > 15)
+	if (!config_.baud_rate || !IS_UART_MODE(config_.mode) || config_.alternate > 15 || !IS_GPIO_PULL(config_.rx_pull))
 	{
 		return fail(component::uart, error_code::invalid_config);
 	}
@@ -190,11 +190,12 @@ status uart::init()
 		return fail(component::uart, error_code::invalid_config);
 	}
 
-	auto setup_pin = [this](pin pin) -> status
+	auto setup_pin = [this](pin pin, uint32_t pull) -> status
 	{
 		gpio_config pin_config{};
 		pin_config.pin = pin;
 		pin_config.mode = GPIO_MODE_AF_PP;
+		pin_config.pull = pull;
 		pin_config.speed = GPIO_SPEED_FREQ_HIGH;
 		pin_config.alternate = config_.alternate;
 
@@ -204,7 +205,7 @@ status uart::init()
 
 	if (config_.mode & UART_MODE_TX)
 	{
-		auto operation_status = setup_pin(config_.tx)
+		auto operation_status = setup_pin(config_.tx, GPIO_NOPULL)
 									.and_then([&]{ return setup_dma(false); });
 		if (!operation_status)
 		{
@@ -214,7 +215,7 @@ status uart::init()
 
 	if (config_.mode & UART_MODE_RX)
 	{
-		auto operation_status = setup_pin(config_.rx)
+		auto operation_status = setup_pin(config_.rx, config_.rx_pull)
 									.and_then([&]{ return setup_dma(true);});
 
 		if (!operation_status)
@@ -306,9 +307,11 @@ status uart::begin_write(const uint8_t *data, size_t size)
 	ulTaskNotifyTake(pdTRUE, 0);
 
 	tx_waiter_ = xTaskGetCurrentTaskHandle();
+	tx_error_detail_.store(HAL_UART_ERROR_NONE);
 	tx_state_.store(tx_state::transmitting);
 
-	if (auto status = from_hal(component::uart, HAL_UART_Transmit_DMA(&handle_, data, size)); !status)
+	const auto transmitted = HAL_UART_Transmit_DMA(&handle_, data, size);
+	if (auto status = from_hal(component::uart, transmitted, HAL_UART_GetError(&handle_)); !status)
 	{
 		tx_state_.store(tx_state::idle);
 		tx_waiter_ = nullptr;
@@ -322,12 +325,17 @@ status uart::begin_write(const uint8_t *data, size_t size)
 status uart::finish_write()
 {
 	const auto state = tx_state_.exchange(tx_state::idle);
+	const auto detail = tx_error_detail_.exchange(HAL_UART_ERROR_NONE);
 	tx_waiter_ = nullptr;
 	if (state == tx_state::transmitting || state == tx_state::failed)
 	{
 		HAL_UART_AbortTransmit(&handle_);
-		return fail(component::uart, state == tx_state::transmitting
-		                             ? error_code::timeout_error : error_code::device_error);
+		return tl::make_unexpected(::error{
+			component::uart,
+			state == tx_state::transmitting ? error_code::timeout_error : error_code::device_error,
+			state == tx_state::transmitting ? HAL_TIMEOUT : HAL_ERROR,
+			detail
+		});
 	}
 	return state == tx_state::completed ? status{}
 	                                    : fail(component::uart, error_code::device_error);
@@ -429,25 +437,33 @@ void uart::on_tx_event(BaseType_t *higher_priority_woken)
 
 void uart::on_error(BaseType_t* higher_priority_woken)
 {
-	__HAL_UART_CLEAR_PEFLAG(&handle_);
-
-	if (config_.mode & UART_MODE_RX)
+	const auto detail = HAL_UART_GetError(&handle_);
+	const auto receive_errors = detail & (HAL_UART_ERROR_PE | HAL_UART_ERROR_NE | HAL_UART_ERROR_FE | HAL_UART_ERROR_ORE);
+	const auto dma_error_aborted_transfers = (detail & HAL_UART_ERROR_DMA) != 0;
+	const auto active_transmit_aborted = dma_error_aborted_transfers && tx_state_.load() == tx_state::transmitting;
+	if (active_transmit_aborted)
 	{
-		if (auto status = start_rx_dma(); !status)
+		tx_error_detail_.store(detail);
+		tx_state_.store(tx_state::failed);
+		if (tx_waiter_)
 		{
-			last_error_ = status;
+			vTaskNotifyGiveFromISR(tx_waiter_, higher_priority_woken);
 		}
 	}
 
-	if (config_.mode & UART_MODE_TX)
+	const auto receive_affected = (config_.mode & UART_MODE_RX) && (receive_errors || dma_error_aborted_transfers);
+	if (receive_affected)
 	{
-		if (tx_state_.load() == tx_state::transmitting)
+		rx_error_detail_.fetch_or(detail);
+		const auto receive_stopped_by_hal = handle_.RxState == HAL_UART_STATE_READY;
+		if (receive_stopped_by_hal)
 		{
-			tx_state_= tx_state::failed;
-			if (tx_waiter_)
+			if (receive_errors)
 			{
-				vTaskNotifyGiveFromISR(tx_waiter_, higher_priority_woken);
+				__HAL_UART_CLEAR_PEFLAG(&handle_);
 			}
+			const auto restarted = start_rx_dma();
+			rx_restart_pending_.store(!restarted);
 		}
 	}
 }
@@ -494,11 +510,25 @@ void uart::drain_rx(size_t write_pos, BaseType_t *higher_priority_woken)
 
 //////////////////////////////////////////////////////////////////////////
 
-status uart::error()
+status uart::check_receive_error()
 {
-	auto temp = last_error_;
-	last_error_ = {};
-	return temp;
+	const auto detail = rx_error_detail_.exchange(HAL_UART_ERROR_NONE);
+	if (rx_restart_pending_.exchange(false))
+	{
+		if (auto restarted = start_rx_dma(); !restarted)
+		{
+			rx_restart_pending_.store(true);
+			rx_error_detail_.fetch_or(detail);
+			auto failure = restarted.error();
+			failure.hal_detail |= detail;
+			return tl::make_unexpected(failure);
+		}
+	}
+	if (detail != HAL_UART_ERROR_NONE)
+	{
+		return tl::make_unexpected(::error{component::uart, error_code::device_error, HAL_ERROR, detail});
+	}
+	return {};
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -545,7 +575,15 @@ result<size_t> uart::read(uint8_t *data, size_t size, uint32_t timeout_ms)
 	}
 
 	TickType_t ticks = (timeout_ms == portMAX_DELAY) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+	if (auto received = check_receive_error(); !received)
+	{
+		return tl::make_unexpected(received.error());
+	}
 	size_t bytes_read = xStreamBufferReceive(rx_stream_buf_, data, size, ticks);
+	if (auto received = check_receive_error(); !received)
+	{
+		return tl::make_unexpected(received.error());
+	}
 
 	return bytes_read;
 }

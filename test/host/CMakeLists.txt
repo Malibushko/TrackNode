@@ -5,6 +5,11 @@ target_include_directories(host_headers INTERFACE
     "${PROJECT_SOURCE_DIR}/lib/expected/include"
 )
 
+add_executable(uart_test uart_test.cpp "${PROJECT_SOURCE_DIR}/src/drivers/uart.cpp")
+target_include_directories(uart_test BEFORE PRIVATE uart_fakes)
+target_link_libraries(uart_test PRIVATE host_headers)
+add_test(NAME uart_test COMMAND uart_test)
+
 add_executable(control_button_gesture_test control_button_gesture_test.cpp)
 target_link_libraries(control_button_gesture_test PRIVATE host_headers)
 add_test(NAME control_button_gesture_test COMMAND control_button_gesture_test)

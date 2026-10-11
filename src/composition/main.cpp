@@ -100,7 +100,8 @@ status configure_console(firmware_composition &application)
 	    .rx = {GPIOA, GPIO_PIN_10},
 	    .alternate = GPIO_AF7_USART1,
 	    .baud_rate = 115200,
-	    .mode = UART_MODE_TX_RX
+	    .mode = UART_MODE_TX_RX,
+	    .rx_pull = GPIO_PULLUP
 	}};
 
 	if (auto added = application.devices.add("console", device, component_startup::initialize); !added)

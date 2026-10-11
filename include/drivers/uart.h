@@ -20,6 +20,7 @@ struct uart_config
 	uint32_t mode;
 	uint32_t irq_priority = 5;
 	size_t rx_buffer_size = 128;
+	uint32_t rx_pull = GPIO_NOPULL;
 };
 
 class uart : public hardware_object
@@ -96,7 +97,7 @@ private:
 
 	void drain_rx(size_t write_pos, BaseType_t* higher_priority_woken);
 
-	status error();
+	status check_receive_error();
 
 	status enable_irq();
 	status setup_dma(bool is_rx);
@@ -109,6 +110,7 @@ private:
 	DMA_HandleTypeDef  hdma_tx_{};
 
 	std::atomic<tx_state> tx_state_{};
+	std::atomic<std::uint32_t> tx_error_detail_{0};
 	TaskHandle_t tx_waiter_{};
 
 	std::array<uint8_t, rx_dma_buffer_capacity> rx_dma_buf_{};
@@ -118,7 +120,8 @@ private:
 	std::atomic<uint32_t> dropped_count_{ 0 };
 	StreamBufferHandle_t rx_stream_buf_{};
 	size_t last_read_pos_{};
-	status last_error_{};
+	std::atomic<std::uint32_t> rx_error_detail_{0};
+	std::atomic<bool> rx_restart_pending_{false};
 
 	friend void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart);
 	friend void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size);
