@@ -126,6 +126,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (!closed) Dispatcher.BeginInvoke(() => { if (!closed) action(); });
     }
 
+    protected override void OnSourceInitialized(EventArgs args)
+    {
+        base.OnSourceInitialized(args);
+        WindowTheme.Apply(this);
+    }
+
     private void Refresh() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
 
     private void Add(string kind, string text)
