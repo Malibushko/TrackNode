@@ -128,6 +128,7 @@ status bluetooth_service::submit_reply(const command_reply &reply)
 
 void bluetooth_service::set_power_mode(power_mode)
 {
+	// Intentional no-op: Zephyr manages CPU sleep automatically.
 }
 
 //////////////////////////////////////////////////////////////////////////
