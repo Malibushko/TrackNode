@@ -11,6 +11,7 @@ inline int bt_addr_le_cmp(const bt_addr_le_t *a, const bt_addr_le_t *b) { return
 struct bt_bond_info { bt_addr_le_t addr; };
 inline constexpr int BT_ID_DEFAULT = 0;
 inline bool fake_known_peer = true;
+inline bool fake_restore_bond_security = true;
 inline unsigned fake_bond_count = 1;
 struct bt_conn
 {
@@ -94,7 +95,7 @@ inline bt_security_t bt_conn_get_security(bt_conn *conn) { return conn->security
 inline unsigned bt_conn_enc_key_size(bt_conn *) { return 16; }
 inline int bt_conn_set_security(bt_conn *conn, bt_security_t level)
 {
-	if (fake_known_peer && registered_callback->security_changed)
+	if (fake_known_peer && fake_restore_bond_security && registered_callback->security_changed)
 	{
 		conn->security = level;
 		registered_callback->security_changed(conn, level, BT_SECURITY_ERR_SUCCESS);

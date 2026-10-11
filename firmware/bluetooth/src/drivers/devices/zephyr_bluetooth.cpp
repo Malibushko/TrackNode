@@ -382,15 +382,15 @@ void zephyr_bluetooth::on_connected(bt_conn *conn, std::uint8_t err)
 			return;
 		}
 		const auto pairing_window_open = k_uptime_get() < instance->pairing_deadline_;
-		const auto new_peer_during_pairing = pairing_window_open && !bond.found;
 		const auto bonded_peer_outside_pairing = !pairing_window_open && bond.found;
-		admitted = new_peer_during_pairing || bonded_peer_outside_pairing;
+		admitted = pairing_window_open || bonded_peer_outside_pairing;
 		if (admitted)
 		{
 			previous = std::move(instance->active_connection_);
 			instance->active_connection_ = retain_connection(conn);
 			instance->receive_session_ = 0;
 			instance->known_peer_ = bond.found;
+			instance->pairing_required_ = pairing_window_open;
 			instance->revoked_ = false;
 			instance->bonded_peer_ = false;
 			instance->pairing_started_ = false;
@@ -472,7 +472,7 @@ void zephyr_bluetooth::on_security_changed(bt_conn *connection, bt_security_t le
 		spin_lock_guard guard{callback_lock};
 		self = instance;
 	}
-	if (self)
+	if (self && !self->reject_bonded_reconnect(connection))
 	{
 		self->update_security(connection);
 	}
@@ -644,8 +644,8 @@ void zephyr_bluetooth::update_security(bt_conn *connection)
 		spin_lock_guard guard{callback_lock};
 		const auto security_result_no_longer_applicable = instance != this || revoked_ ||
 			k_uptime_get() >= security_deadline_ || active_connection_.get() != connection || link_.connected;
-		const auto peer_not_bonded = !known_peer_ && !bonded_peer_;
-		if (security_result_no_longer_applicable || peer_not_bonded)
+		const auto required_pairing_incomplete = pairing_required_ && !bonded_peer_;
+		if (security_result_no_longer_applicable || required_pairing_incomplete)
 		{
 			return;
 		}
@@ -663,6 +663,25 @@ void zephyr_bluetooth::update_security(bt_conn *connection)
 
 //////////////////////////////////////////////////////////////////////////
 
+bool zephyr_bluetooth::reject_bonded_reconnect(bt_conn *connection)
+{
+	{
+		spin_lock_guard guard{callback_lock};
+		const auto resumed_existing_bond_in_pairing_window = instance == this && !revoked_ &&
+			active_connection_.get() == connection && known_peer_ && pairing_required_ && !pairing_started_;
+		if (!resumed_existing_bond_in_pairing_window)
+		{
+			return false;
+		}
+		revoked_ = true;
+		receive_session_ = 0;
+	}
+	bt_conn_disconnect(connection, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void zephyr_bluetooth::process_security()
 {
 	connection_ref expired;
@@ -672,8 +691,8 @@ void zephyr_bluetooth::process_security()
 		const auto now = k_uptime_get();
 		const auto establishing_security = active_connection_ && !link_.connected;
 		const auto security_timed_out = now >= security_deadline_;
-		const auto new_peer_missed_pairing_window = !known_peer_ && now >= pairing_deadline_;
-		if (establishing_security && (security_timed_out || new_peer_missed_pairing_window))
+		const auto required_pairing_missed_window = pairing_required_ && now >= pairing_deadline_;
+		if (establishing_security && (security_timed_out || required_pairing_missed_window))
 		{
 			revoked_ = true;
 			receive_session_ = 0;

@@ -73,6 +73,7 @@ private:
 	static void on_gatt_changed(void *context, bt_conn *connection);
 
 	void update_security(bt_conn *connection);
+	bool reject_bonded_reconnect(bt_conn *connection);
 	void process_security();
 	connection_ref revoke_current_connection_locked();
 	status disconnect_current_client(const connection_ref &connection);
@@ -105,6 +106,7 @@ private:
 	std::int64_t pairing_deadline_ = 0;
 	std::int64_t security_deadline_ = 0;
 	bool known_peer_ = false;
+	bool pairing_required_ = false;
 	bool revoked_ = false;
 	bool pairing_started_ = false;
 	bool bonded_peer_ = false;
