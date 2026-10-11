@@ -343,7 +343,7 @@ status configure_bluetooth(firmware_composition &application)
 	}};
 
 	static xiao_ble_bridge backend{transport};
-	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor};
+	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor, bluetooth_config{}};
 
 	return application.services.add(service_id::bluetooth, bluetooth, {service_id::logger})
 	    .and_then([&]{ return application.telemetry.add(bluetooth); });

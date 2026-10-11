@@ -3,6 +3,7 @@
 #include "application/telemetry_sink.h"
 #include "application/command_sink.h"
 #include "application/firmware_log_sink.h"
+#include "infrastructure/bluetooth_config.h"
 #include <atomic>
 #include "drivers/bluetooth_backend.h"
 #include "libs/freertos/freertos_helpers.h"
@@ -16,8 +17,8 @@ class bluetooth_service final : public telemetry_sink, public command_reply_sink
 {
 public:
 	bluetooth_service(bluetooth_backend &backend, command_sink &commands,
-	                  logger_service &logger, supervisor &monitor)
-		: backend_(backend), commands_(commands), logger_(logger), monitor_(monitor) {}
+	                  logger_service &logger, supervisor &monitor, bluetooth_config config = {})
+		: backend_(backend), commands_(commands), logger_(logger), monitor_(monitor), config_(config) {}
 
 public:
 	status start();
@@ -30,6 +31,7 @@ public:
 	void set_power_mode(power_mode mode) override;
 
 private:
+	status validate_config() const;
 	static void task_entry(void *argument);
 	void run();
 	bool initialize_backend();
@@ -56,6 +58,7 @@ private:
 	command_sink &commands_;
 	logger_service &logger_;
 	supervisor &monitor_;
+	const bluetooth_config config_;
 	QueueHandle_t replies_ = nullptr;
 	QueueHandle_t samples_ = nullptr;
 	QueueHandle_t logs_ = nullptr;
@@ -68,7 +71,7 @@ private:
 	{
 		std::uint32_t session;
 		std::uint32_t timestamp_ms;
-		std::array<char, 96> text;
+		std::array<char, bluetooth_config::log_text_storage_capacity> text;
 	};
 	std::atomic<std::uint32_t> log_session_{0};
 	std::atomic<std::uint32_t> dropped_logs_{0};

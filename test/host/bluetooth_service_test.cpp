@@ -24,6 +24,7 @@ public:
 	std::function<void()> before_finish;
 	unsigned initialized = 0;
 	unsigned advertisements = 0;
+	std::uint32_t last_poll_timeout_ms = 0;
 	bool fail_init = false;
 	bool busy_advertise = false;
 
@@ -60,8 +61,9 @@ public:
 		sessions.push_back(session);
 		return {};
 	}
-	result<bluetooth_event> poll(std::uint32_t) override
+	result<bluetooth_event> poll(std::uint32_t timeout_ms) override
 	{
+		last_poll_timeout_ms = timeout_ms;
 		if (events.empty())
 		{
 			if (before_finish)
@@ -230,6 +232,95 @@ int main()
 	require(second_log != std::string::npos && text.find("test,line", second_log + 1) == std::string::npos);
 	log_service.stop();
 	require(logger.sink == nullptr);
+
+	const bluetooth_config custom_config{
+		.poll_timeout_ms = 7,
+		.reconnect_interval_ms = 37,
+		.command_capacity = 20,
+		.reply_queue_capacity = 2,
+		.log_queue_capacity = 3,
+		.replies_per_cycle = 1,
+		.logs_per_cycle = 1,
+		.log_text_capacity = 4,
+		.task_stack_depth = 512,
+		.task_priority = 2
+	};
+	fake_backend custom_backend;
+	fake_commands custom_commands;
+	bluetooth_service custom_service{custom_backend, custom_commands, logger, monitor, custom_config};
+	require(custom_service.start().has_value());
+	require(fake_stack_depth == 512 && fake_priority == 2);
+	const auto initial_ticks = fake_ticks;
+	custom_backend.fail_init = true;
+	custom_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {true, true, 20, 50}
+	});
+	custom_backend.events.push_back(receive("SET SAMPLE_PERIOD 100", 50));
+	custom_backend.events.push_back(receive("SET LOG_STREAM ON", 50));
+	custom_backend.before_finish = [&]
+	{
+		for (unsigned index = 0; index < 5; ++index)
+		{
+			custom_service.submit_log("abcdef");
+		}
+		command_reply reply{
+			.session = 50,
+			.text = {'R', '\r', '\n'}
+		};
+		require(custom_service.submit_reply(reply).has_value());
+		require(custom_service.submit_reply(reply).has_value());
+		require(!custom_service.submit_reply(reply));
+		custom_backend.events.push_back(bluetooth_event{
+			.type = bluetooth_event::kind::link_changed,
+			.link = {true, true, 20, 51}
+		});
+	};
+	try
+	{
+		fake_task(fake_argument);
+	}
+	catch (const finished &)
+	{
+	}
+	require(fake_ticks - initial_ticks == 37 && custom_backend.last_poll_timeout_ms == 7);
+	text.clear();
+	for (const auto &chunk : custom_backend.chunks)
+	{
+		text += chunk;
+	}
+	require(text.starts_with("ERR LINE_TOO_LONG\r\nOK LOG_STREAM ON\r\nR\r\nL,"));
+	require(text.find("[dropped 2 BLE log messages]") != std::string::npos);
+	require(text.find(",abcd\r\n") != std::string::npos);
+	require(text.find(",abcd\r\n", text.find(",abcd\r\n") + 1) == std::string::npos);
+	require(text.find("R\r\n", text.find("R\r\n") + 1) == std::string::npos);
+	require(custom_commands.received.empty());
+	custom_service.stop();
+
+	for (unsigned field = 0; field < 13; ++field)
+	{
+		bluetooth_config invalid;
+		switch (field)
+		{
+			case 0: invalid.poll_timeout_ms = 0; break;
+			case 1: invalid.reconnect_interval_ms = 0; break;
+			case 2: invalid.command_capacity = 0; break;
+			case 3: invalid.command_capacity = bluetooth_event{}.payload.size() + 1; break;
+			case 4: invalid.reply_queue_capacity = 0; break;
+			case 5: invalid.log_queue_capacity = 0; break;
+			case 6: invalid.replies_per_cycle = 0; break;
+			case 7: invalid.logs_per_cycle = 0; break;
+			case 8: invalid.log_text_capacity = 0; break;
+			case 9: invalid.log_text_capacity = bluetooth_config::log_text_storage_capacity; break;
+			case 10: invalid.task_stack_depth = 0; break;
+			case 11: invalid.task_priority = configMAX_PRIORITIES; break;
+			case 12: invalid.reply_queue_capacity = static_cast<std::size_t>(UINT32_MAX) + 1; break;
+		}
+		bluetooth_service invalid_service{backend, commands, logger, monitor, invalid};
+		const auto result = invalid_service.start();
+		require(!result && result.error().code == error_code::invalid_config);
+		require(logger.sink == nullptr);
+	}
 	fail_task_create = true;
 	require(!service.start());
 	require(!service.submit_reply({}));

@@ -8,15 +8,24 @@
 #include <cstdio>
 #include <type_traits>
 
-namespace
+static_assert(std::is_trivially_copyable_v<telemetry_sample>);
+
+status bluetooth_service::validate_config() const
 {
-constexpr std::uint32_t poll_timeout_ms = 20;
-constexpr std::uint32_t reconnect_interval_ms = 1000;
-constexpr std::size_t command_capacity = 64;
-constexpr std::size_t reply_queue_capacity = 4;
+	if (config_.poll_timeout_ms == 0 || pdMS_TO_TICKS(config_.reconnect_interval_ms) == 0 ||
+		config_.command_capacity == 0 || config_.command_capacity > bluetooth_event{}.payload.size() ||
+		config_.reply_queue_capacity == 0 || config_.log_queue_capacity == 0 ||
+		config_.reply_queue_capacity > UINT32_MAX || config_.log_queue_capacity > UINT32_MAX ||
+		config_.replies_per_cycle == 0 || config_.logs_per_cycle == 0 ||
+		config_.log_text_capacity == 0 || config_.log_text_capacity >= bluetooth_config::log_text_storage_capacity ||
+		config_.task_stack_depth == 0 || config_.task_priority >= configMAX_PRIORITIES)
+	{
+		return fail(component::service, error_code::invalid_config);
+	}
+	return {};
 }
 
-static_assert(std::is_trivially_copyable_v<telemetry_sample>);
+//////////////////////////////////////////////////////////////////////////
 
 status bluetooth_service::start()
 {
@@ -24,17 +33,21 @@ status bluetooth_service::start()
 	{
 		return fail(component::rtos, error_code::already_initialized);
 	}
+	if (auto validated = validate_config(); !validated)
+	{
+		return validated;
+	}
 
-	replies_ = xQueueCreate(reply_queue_capacity, sizeof(command_reply));
+	replies_ = xQueueCreate(config_.reply_queue_capacity, sizeof(command_reply));
 	samples_ = xQueueCreate(1, sizeof(telemetry_sample));
-	logs_ = xQueueCreate(8, sizeof(log_message));
+	logs_ = xQueueCreate(config_.log_queue_capacity, sizeof(log_message));
 	if (!replies_ || !samples_ || !logs_)
 	{
 		stop();
 		return fail(component::rtos, error_code::out_of_memory);
 	}
 
-	const auto created = task_create(task_entry, "bluetooth", configMINIMAL_STACK_SIZE * 8, this, tskIDLE_PRIORITY + 1);
+	const auto created = task_create(task_entry, "bluetooth", config_.task_stack_depth, this, config_.task_priority);
 	if (!created)
 	{
 		stop();
@@ -135,7 +148,7 @@ void bluetooth_service::submit_log(std::string_view text)
 	std::size_t index = 0;
 	for (const char value : text)
 	{
-		if (index == message.text.size() - 1)
+		if (index == config_.log_text_capacity)
 		{
 			break;
 		}
@@ -249,7 +262,7 @@ status bluetooth_service::handle_received(const bluetooth_event &event)
 	{
 		text.remove_suffix(1);
 	}
-	if (text.size() > command_capacity)
+	if (text.size() > config_.command_capacity)
 	{
 		return send_error("ERR LINE_TOO_LONG\r\n", event.link.session);
 	}
@@ -353,7 +366,7 @@ status bluetooth_service::send_reply(const command_reply &reply)
 status bluetooth_service::process_replies()
 {
 	command_reply reply{};
-	for (std::size_t index = 0; index < reply_queue_capacity && xQueueReceive(replies_, &reply, 0) == pdPASS; ++index)
+	for (std::size_t index = 0; index < config_.replies_per_cycle && xQueueReceive(replies_, &reply, 0) == pdPASS; ++index)
 	{
 		if (const auto sent = send_reply(reply); !sent)
 		{
@@ -398,7 +411,7 @@ void bluetooth_service::task_entry(void *argument)
 
 status bluetooth_service::send_log_line(std::uint32_t timestamp_ms, const char *text, std::uint32_t session)
 {
-	std::array<char, 128> line{};
+	std::array<char, bluetooth_config::log_line_storage_capacity> line{};
 	const int length = std::snprintf(line.data(), line.size(), "L,%lu,%s\r\n",
 		static_cast<unsigned long>(timestamp_ms), text);
 	if (length < 0 || static_cast<std::size_t>(length) >= line.size())
@@ -425,7 +438,7 @@ status bluetooth_service::process_logs()
 	const auto dropped = dropped_logs_.exchange(0);
 	if (dropped != 0)
 	{
-		std::array<char, 64> text{};
+		std::array<char, bluetooth_config::log_line_storage_capacity> text{};
 		std::snprintf(text.data(), text.size(), "[dropped %lu BLE log messages]", static_cast<unsigned long>(dropped));
 		if (auto sent = send_log_line(pdTICKS_TO_MS(xTaskGetTickCount()), text.data(), session); !sent)
 		{
@@ -433,7 +446,7 @@ status bluetooth_service::process_logs()
 			return sent;
 		}
 	}
-	for (std::size_t index = 0; index < 2 && xQueueReceive(logs_, &message, 0) == pdPASS; ++index)
+	for (std::size_t index = 0; index < config_.logs_per_cycle && xQueueReceive(logs_, &message, 0) == pdPASS; ++index)
 	{
 		if (message.session != session)
 		{
@@ -461,7 +474,7 @@ bool bluetooth_service::initialize_backend()
 		monitor_.report(service_id::bluetooth, initialized.error(), service_health::degraded);
 		(void)logger_.write("BLE bridge init failed: %u\r\n", static_cast<unsigned>(initialized.error().code));
 		monitor_.progress(service_id::bluetooth, xTaskGetTickCount());
-		vTaskDelay(pdMS_TO_TICKS(reconnect_interval_ms));
+		vTaskDelay(pdMS_TO_TICKS(config_.reconnect_interval_ms));
 		return false;
 	}
 
@@ -487,7 +500,7 @@ status bluetooth_service::process_advertising()
 
 status bluetooth_service::poll_and_process(bool &poll_failed)
 {
-	const auto event = backend_.poll(poll_timeout_ms);
+	const auto event = backend_.poll(config_.poll_timeout_ms);
 	poll_failed = !event.has_value();
 	if (!event)
 	{

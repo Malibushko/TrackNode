@@ -8,6 +8,11 @@ using TaskHandle_t = void *;
 using TaskFunction_t = void (*)(void *);
 inline constexpr unsigned configMINIMAL_STACK_SIZE = 128;
 inline constexpr unsigned tskIDLE_PRIORITY = 0;
+inline constexpr unsigned configMAX_PRIORITIES = 5;
+using configSTACK_DEPTH_TYPE = std::uint16_t;
+using UBaseType_t = std::uint32_t;
+inline unsigned fake_stack_depth = 0;
+inline unsigned fake_priority = 0;
 inline constexpr unsigned portTICK_PERIOD_MS = 1;
 inline TickType_t fake_ticks = 0;
 inline TaskFunction_t fake_task = nullptr;
@@ -56,7 +61,7 @@ inline BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t)
 	queue->items.pop_front();
 	return pdPASS;
 }
-inline result<TaskHandle_t> task_create(TaskFunction_t function, const char *, unsigned, void *argument, unsigned)
+inline result<TaskHandle_t> task_create(TaskFunction_t function, const char *, unsigned stack_depth, void *argument, unsigned priority)
 {
 	if (fail_task_create)
 	{
@@ -64,6 +69,8 @@ inline result<TaskHandle_t> task_create(TaskFunction_t function, const char *, u
 	}
 
 	fake_task = function;
+	fake_stack_depth = stack_depth;
+	fake_priority = priority;
 	fake_argument = argument;
 	return static_cast<void *>(&fake_ticks);
 }
