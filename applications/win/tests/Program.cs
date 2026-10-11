@@ -76,4 +76,5 @@ catch (InvalidDataException) { Check(true); }
 gnssBytes[1] = 4;
 try { GnssMeasurement.Decode(gnssBytes); Check(false); }
 catch (InvalidDataException) { Check(true); }
+await HistoryTests.RunAsync();
 Console.WriteLine($"{checks} protocol checks passed: text framing, replies, typed values, schema, bounds and absent GNSS.");

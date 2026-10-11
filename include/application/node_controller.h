@@ -74,6 +74,7 @@ private: // State
 	std::optional<sensor_sample> last_sample_;
 	command_request active_request_{};
 	std::uint32_t next_sequence_ = 1;
+	sequence_t next_telemetry_id_ = 1;
 	TickType_t sample_period_ = pdMS_TO_TICKS(1000);
 	bool sensor_initialized_ = false;
 	bool sensor_faulted_ = false;

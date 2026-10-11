@@ -5,6 +5,7 @@
 #include "application/firmware_log_sink.h"
 #include "infrastructure/bluetooth_config.h"
 #include "infrastructure/diagnostic_log.h"
+#include "infrastructure/telemetry_journal_service.h"
 #include <atomic>
 #include "infrastructure/indicator_service.h"
 #include "drivers/bluetooth_backend.h"
@@ -19,8 +20,9 @@ class bluetooth_service final : public telemetry_sink, public command_reply_sink
 {
 public:
 	bluetooth_service(bluetooth_backend &backend, command_sink &commands,
-	                  logger_service &logger, supervisor &monitor, bluetooth_config config = {}, indicator_service *indicator = nullptr)
-		: backend_(backend), commands_(commands), logger_(logger), monitor_(monitor), config_(config), indicator_(indicator) {}
+	                  logger_service &logger, supervisor &monitor, bluetooth_config config = {}, indicator_service *indicator = nullptr,
+	                  telemetry_journal_service *journal = nullptr)
+		: backend_(backend), commands_(commands), logger_(logger), monitor_(monitor), config_(config), indicator_(indicator), journal_(journal) {}
 
 public:
 	status start();
@@ -47,6 +49,7 @@ private:
 	status process_output();
 	status process_replies();
 	status process_sample();
+	status process_history();
 	status process_logs();
 	result<bool> process_diagnostic(std::uint32_t session);
 
@@ -75,6 +78,7 @@ private:
 	supervisor &monitor_;
 	const bluetooth_config config_;
 	indicator_service *indicator_;
+	telemetry_journal_service *journal_;
 
 	TaskHandle_t task_ = nullptr;
 	QueueHandle_t replies_ = nullptr;

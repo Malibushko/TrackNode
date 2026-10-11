@@ -80,6 +80,7 @@ public sealed class ReplyTracker(string command)
         if (line.StartsWith("T,", StringComparison.Ordinal) || line.StartsWith("L,", StringComparison.Ordinal)) return false;
         Lines.Add(line);
         if (line.StartsWith("ERR ", StringComparison.Ordinal)) return true;
+        if (command.StartsWith("H R ", StringComparison.Ordinal)) return line.StartsWith("H E ", StringComparison.Ordinal);
         if (command == "GET GNSS" && remaining < 0 && line.StartsWith("GNSS seq=", StringComparison.Ordinal))
         {
             remaining = new[] { "pos", "speed", "time_field" }.Count(field =>

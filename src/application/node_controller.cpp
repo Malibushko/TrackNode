@@ -202,7 +202,12 @@ void node_controller::take_sample()
 		}
 
 		const TickType_t recorded_at = xTaskGetTickCount();
-		(void)telemetry_.submit(telemetry_sample{*last_sample_, gnss, recorded_at});
+		(void)telemetry_.submit(telemetry_sample{
+			.sensor = *last_sample_,
+			.gnss = gnss,
+			.recorded_at = recorded_at,
+			.id = next_telemetry_id_++
+		});
 #ifndef NO_STORAGE
 		if (auto record = format_sample_csv(*last_sample_, gnss, recorded_at))
 		{

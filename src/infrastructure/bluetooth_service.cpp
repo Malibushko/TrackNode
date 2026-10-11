@@ -57,6 +57,10 @@ void bluetooth_service::stop()
 		vTaskDelete(task_);
 		task_ = nullptr;
 	}
+	if (journal_)
+	{
+		journal_->reset_history_transfer();
+	}
 	if (replies_)
 	{
 		vQueueDelete(replies_);
@@ -313,6 +317,7 @@ status bluetooth_service::process_output()
 {
 	return process_replies()
 		.and_then([&]{ return process_sample(); })
+		.and_then([&]{ return process_history(); })
 		.and_then([&]{ return process_logs(); });
 }
 
@@ -371,6 +376,27 @@ status bluetooth_service::process_sample()
 	text[1] = ',';
 	std::copy_n(record->text.begin(), record->length, text.begin() + 2);
 	return send_text({text.data(), static_cast<std::size_t>(record->length) + 2}, link_.session);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status bluetooth_service::process_history()
+{
+	if (!journal_)
+	{
+		return {};
+	}
+	const auto line = journal_->next_history_response();
+	if (line.empty())
+	{
+		return {};
+	}
+	const auto sent = send_text(line, link_.session);
+	if (sent)
+	{
+		journal_->on_history_response_sent();
+	}
+	return sent;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -546,6 +572,12 @@ status bluetooth_service::handle_received(const bluetooth_event &event)
 
 status bluetooth_service::handle_command(std::string_view text, std::uint32_t session)
 {
+	if (journal_ && journal_->can_handle_command(text))
+	{
+		const auto response = journal_->handle_history_command(text, session);
+		return response.empty() ? status{} : send_text(response, session);
+	}
+
 	const auto log_stream_command = text == "SET LOG_STREAM ON" || text == "SET LOG_STREAM OFF";
 	if (log_stream_command)
 	{
@@ -716,6 +748,10 @@ status bluetooth_service::send_log_line(std::uint32_t timestamp_ms, const char *
 
 void bluetooth_service::reset_exchange()
 {
+	if (journal_)
+	{
+		journal_->reset_history_transfer();
+	}
 	reset_session();
 	reset_log_stream();
 	xQueueReset(replies_);

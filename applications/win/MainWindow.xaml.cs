@@ -42,6 +42,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double? typedPressure;
     private MeasurementStatus? measurementStatus;
     private DateTimeOffset statusReceived;
+    private SavedHistory? chartHistory;
+    private int chartLimit;
+    private string? chartPath;
+    private static string HistoryDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrackNode", "History");
+    public string ChartDetails { get; private set; } = "No saved history. Connect to the node and sync, or open a previous export.";
     public ObservableCollection<NearbyDevice> Devices { get; } = [];
     public ObservableCollection<JournalEntry> Journal { get; } = [];
     public ICollectionView JournalView { get; }
@@ -69,6 +74,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public bool CanConnect => !busy && !Connected && DeviceList?.SelectedItem is NearbyDevice && !demo;
     public bool CanDisconnect => !busy && Connected;
     public bool CanOperate => !busy && Connected;
+    public bool CanSyncHistory => CanOperate && !demo;
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public MainWindow()
@@ -394,6 +400,74 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void SendClicked(object sender, RoutedEventArgs args) => await ExecuteAsync(CommandInput.Text);
 
+    private async void SyncHistoryClicked(object sender, RoutedEventArgs args)
+    {
+        if (!CanSyncHistory) return;
+        busy = true;
+        Refresh();
+        try
+        {
+            var store = new HistoryStore(HistoryDirectory);
+            var result = await HistorySync.RunAsync(SendCommandAsync,
+                (snapshot, page) => Task.Run(() => store.SavePage(snapshot, page)),
+                (count, total) => { Footer = $"History sync: {count}/{total} records saved and acknowledged."; Refresh(); });
+            Footer = $"History: {result.Records} saved · {result.Overwritten} overwritten on device since boot.";
+            Add("SYSTEM", Footer + (result.Path is null ? "" : " File: " + result.Path));
+            if (result.Path is not null) LoadChartHistory(result.Path);
+            WorkbenchTabs.SelectedIndex = 1;
+        }
+        catch (Exception exception)
+        {
+            Footer = "History sync stopped. Saved pages remain on this PC; unacknowledged data can be synchronized again.";
+            Add("ERROR", exception.Message);
+        }
+        finally { busy = false; Refresh(); }
+    }
+
+    private void OpenHistoryClicked(object sender, RoutedEventArgs args)
+    {
+        var dialog = new OpenFileDialog { Filter = "TrackNode history (*.json)|*.json", InitialDirectory = Directory.Exists(HistoryDirectory) ? HistoryDirectory : "" };
+        if (dialog.ShowDialog(this) == true) LoadChartHistory(dialog.FileName);
+    }
+
+    private void LoadChartHistory(string path)
+    {
+        try
+        {
+            var saved = HistoryChartData.Load(path);
+            chartHistory = saved;
+            chartPath = path;
+            UpdateCharts();
+        }
+        catch (Exception error)
+        {
+            Add("ERROR", "Cannot open history: " + error.Message);
+            Footer = "Could not open saved history: " + error.Message;
+            Refresh();
+        }
+    }
+
+    private void ChartRangeClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { Tag: string value } && int.TryParse(value, out var limit))
+        {
+            chartLimit = limit;
+            UpdateCharts();
+        }
+    }
+
+    private void UpdateCharts()
+    {
+        if (chartHistory is null) return;
+        var points = HistoryChartData.Select(chartHistory, chartLimit);
+        TemperatureChart.SetPoints(points);
+        PressureChart.SetPoints(points);
+        var period = points.Count == 0 ? "empty" : $"{points.Min(point => point.Time).ToLocalTime():dd MMM HH:mm:ss} – {points.Max(point => point.Time).ToLocalTime():dd MMM HH:mm:ss}";
+        var overwritten = chartHistory.Anchors.Count == 0 ? 0 : chartHistory.Anchors.Max(anchor => anchor.Overwritten);
+        ChartDetails = $"{points.Count}/{chartHistory.Records.Count} records · {period} · {overwritten} overwritten on device\n{Path.GetFileName(chartPath)}";
+        Refresh();
+    }
+
     private async void CommandKeyDown(object sender, KeyEventArgs args)
     {
         if (args.Key == Key.Enter) { args.Handled = true; await ExecuteAsync(CommandInput.Text); }
@@ -455,8 +529,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReceiveLine("L,1040,GNSS lookup started");
             Add("SYSTEM", "Replies and firmware logs appear independently of telemetry.");
         }
+        if (demo)
+        {
+            chartHistory = new SavedHistory { DeviceId = "DEMO", Epoch = 1 };
+            var start = DateTimeOffset.Now.Date.AddHours(-4);
+            for (int index = 0; index < 144; ++index)
+            {
+                var valid = index is < 65 or > 68;
+                var record = new HistoryRecord((ulong)index + 1, "", (uint)index * 300, 0, valid, false,
+                    valid ? 21.4 + 1.6 * Math.Sin(index / 22.0) : null,
+                    valid ? (uint)(100800 + 170 * Math.Cos(index / 36.0)) : null, null, null);
+                chartHistory.Records.Add(record.Id, new(record, new DateTimeOffset(start.AddMinutes(index * 5)), null));
+            }
+            chartPath = "DEMO · simulated overnight measurements";
+            UpdateCharts();
+        }
+        else if (Directory.Exists(HistoryDirectory))
+        {
+            var latest = Directory.EnumerateFiles(HistoryDirectory, "*.json").OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+            if (latest is not null) LoadChartHistory(latest);
+        }
         Refresh();
         var argv = Environment.GetCommandLineArgs();
+        if (argv.Contains("--charts")) WorkbenchTabs.SelectedIndex = 1;
         var snapshotIndex = Array.IndexOf(argv, "--snapshot");
         if (snapshotIndex >= 0 && snapshotIndex + 1 < argv.Length)
         {

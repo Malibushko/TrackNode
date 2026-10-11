@@ -1,4 +1,5 @@
 target_sources(${TRACK_NODE_TARGET} PRIVATE
+    telemetry_journal_service.cpp
     console_service.cpp
     command_parser.cpp
     track_node_control_protocol.cpp
@@ -17,7 +18,7 @@ if(TRACK_NODE_ENABLE_LORA)
     target_sources(${TRACK_NODE_TARGET} PRIVATE radio_service.cpp)
 endif()
 if(TRACK_NODE_ENABLE_BLUETOOTH)
-    target_sources(${TRACK_NODE_TARGET} PRIVATE bluetooth_service.cpp)
+    target_sources(${TRACK_NODE_TARGET} PRIVATE bluetooth_service.cpp telemetry_history_protocol.cpp)
 endif()
 
 if(NOT NO_STORAGE)

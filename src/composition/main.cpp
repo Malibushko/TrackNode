@@ -1,5 +1,6 @@
 #include "application/deferred_command_sink.h"
 #include "application/telemetry_router.h"
+#include "infrastructure/telemetry_journal_service.h"
 #include "composition/track_node.h"
 #include "board/clock.h"
 #include "platform/error.h"
@@ -33,6 +34,7 @@ struct firmware_composition
 	component_list devices;
 	service_list services;
 	telemetry_router<2> telemetry;
+	telemetry_journal_service *journal = nullptr;
 	deferred_command_sink commands;
 
 	supervisor *monitor = nullptr;
@@ -56,6 +58,19 @@ status initialize_platform()
 #endif
 
 	return init_system_clock();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status configure_telemetry_journal(firmware_composition &application)
+{
+	static telemetry_journal_service journal{application.telemetry, telemetry_archive_config{}, {
+		HAL_GetUIDw0(),
+		HAL_GetUIDw1(),
+		HAL_GetUIDw2()
+	}};
+	application.journal = &journal;
+	return {};
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -346,7 +361,7 @@ status configure_bluetooth(firmware_composition &application)
 	}};
 
 	static xiao_ble_bridge backend{transport};
-	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor, bluetooth_config{}, application.indicator};
+	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor, bluetooth_config{}, application.indicator, application.journal};
 	application.bluetooth = &bluetooth;
 
 	return application.services.add(service_id::bluetooth, bluetooth, {service_id::logger})
@@ -389,7 +404,7 @@ status configure_control_button(firmware_composition &application)
 status configure_controller(firmware_composition &application)
 {
 	if (!application.measurements || !application.indicator || !application.logger ||
-	    !application.gnss || !application.monitor || application.commands.bound())
+	    !application.gnss || !application.monitor || !application.journal || application.commands.bound())
 	{
 		return fail(component::service, error_code::invalid_config);
 	}
@@ -406,7 +421,7 @@ status configure_controller(firmware_composition &application)
 	    *application.records,
 #endif
 	    *application.indicator, *application.logger, *application.gnss,
-	    application.telemetry, board_state, *application.monitor};
+	    *application.journal, board_state, *application.monitor};
 
 	auto added = application.services.add(service_id::sensor, controller,
 	    {service_id::logger, service_id::indicator, service_id::gnss,
@@ -461,7 +476,8 @@ int main()
 
 	static firmware_composition application;
 
-	auto configured = configure_watchdog(application)
+	auto configured = configure_telemetry_journal(application)
+	    .and_then([&]{ return configure_watchdog(application); })
 	    .and_then([&]{ return configure_console(application); })
 	    .and_then([&]{ return configure_sensors(application); })
 	    .and_then([&]{ return configure_indicator(application); })
