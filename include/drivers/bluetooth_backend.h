@@ -18,23 +18,31 @@ struct bluetooth_event
 	{
 		idle,
 		link_changed,
-		received
+		received,
+		pairing_changed
 	} type = kind::idle;
 
 	bluetooth_link link;
 	std::array<std::uint8_t, 128> payload{};
 	std::size_t size = 0;
+	bool pairing = false;
 };
 
 class bluetooth_backend
 {
 public:
 	virtual ~bluetooth_backend() = default;
+
 	virtual status init() = 0;
 	virtual void stop() = 0;
+
 	virtual status start_advertise() = 0;
 	virtual status stop_advertise() = 0;
+
+	virtual status open_pairing_window() = 0;
+
 	virtual status send(std::span<const std::uint8_t> payload, std::uint32_t session) = 0;
 	virtual status publish_measurement(std::span<const std::uint8_t> payload) = 0;
+
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
 };

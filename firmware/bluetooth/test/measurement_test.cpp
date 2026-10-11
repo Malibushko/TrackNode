@@ -83,6 +83,8 @@ int main()
 	ble::zephyr_bluetooth bluetooth{{.name = "TrackNode"}};
 	require(bluetooth.init().has_value());
 	bt_conn connection;
+	registered_callback->connected(&connection, 0);
+	require(bluetooth.poll(0)->link.connected);
 	std::array<std::uint8_t, 20> read{};
 	require(temperature->read(&connection, temperature, read.data(), read.size(), 0) == BT_GATT_ERR(BT_ATT_ERR_UNLIKELY));
 	require(status->read(&connection, status, read.data(), read.size(), 0) == 18 && read[1] == 0);

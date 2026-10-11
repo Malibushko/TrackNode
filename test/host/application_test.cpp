@@ -40,6 +40,22 @@ int main()
 	assert(led.writes.back() == gpio::state::set);
 	led.fail_write = true;
 	assert(!indicator.update(1650, program_state::hal_error));
+	led.fail_write = false;
+	assert(indicator.update(1700, program_state::ok, true));
+	assert(led.writes.back() == gpio::state::set);
+	indicator.start_blink(2, 1710);
+	assert(indicator.update(1950, program_state::ok, true));
+	assert(led.writes.back() == gpio::state::reset);
+	assert(indicator.update(2200, program_state::ok, true));
+	assert(led.writes.back() == gpio::state::set);
+	assert(indicator.update(2300, program_state::hal_error, true));
+	assert(indicator.update(2450, program_state::hal_error, true));
+	assert(led.writes.back() == gpio::state::reset);
+	assert(indicator.update(2500, program_state::ok, true));
+	assert(indicator.update(2750, program_state::ok, true));
+	assert(led.writes.back() == gpio::state::reset);
+	assert(indicator.update(2800, program_state::ok, false));
+	assert(led.writes.back() == gpio::state::set);
 
 	std::puts("PASS: blink sequence, wraparound, error priority, GPIO failure");
 }

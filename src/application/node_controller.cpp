@@ -252,6 +252,10 @@ status node_controller::reply(const char *format, ...)
 
 void node_controller::handle_command(command_request request)
 {
+	if (request.reply_to && !request.reply_to->can_accept_session(request.session))
+	{
+		return;
+	}
 	active_request_ = request;
 	const auto value = request.value;
 	switch (value.type)

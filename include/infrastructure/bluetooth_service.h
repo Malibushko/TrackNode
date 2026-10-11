@@ -6,6 +6,7 @@
 #include "infrastructure/bluetooth_config.h"
 #include "infrastructure/diagnostic_log.h"
 #include <atomic>
+#include "infrastructure/indicator_service.h"
 #include "drivers/bluetooth_backend.h"
 #include "libs/freertos/freertos_helpers.h"
 #include <string_view>
@@ -18,60 +19,78 @@ class bluetooth_service final : public telemetry_sink, public command_reply_sink
 {
 public:
 	bluetooth_service(bluetooth_backend &backend, command_sink &commands,
-	                  logger_service &logger, supervisor &monitor, bluetooth_config config = {})
-		: backend_(backend), commands_(commands), logger_(logger), monitor_(monitor), config_(config) {}
+	                  logger_service &logger, supervisor &monitor, bluetooth_config config = {}, indicator_service *indicator = nullptr)
+		: backend_(backend), commands_(commands), logger_(logger), monitor_(monitor), config_(config), indicator_(indicator) {}
 
 public:
 	status start();
 	void stop();
 
-public:
+	status on_pairing_mode_requested();
+
+	[[nodiscard]] bool can_accept_session(std::uint32_t session) const override;
 	status submit(const telemetry_sample &sample) override;
 	status submit_reply(const command_reply &reply) override;
 	void submit_log(std::string_view text) override;
 	void set_power_mode(power_mode mode) override;
 
 private:
-	status validate_config() const;
+	[[nodiscard]] status validate_config() const;
+	bool initialize_backend();
+
 	static void task_entry(void *argument);
 	void run();
-	bool initialize_backend();
 	status poll_and_process(bool &poll_failed);
-	bool handle_failure(error failure, bool poll_failed);
+
+	status process_pairing_request();
 	status process_advertising();
-	status handle_link_changed(const bluetooth_link &link);
-	status handle_received(const bluetooth_event &event);
-	status handle_command(std::string_view text, std::uint32_t session);
-	status handle_log_stream(bool enabled, std::uint32_t session);
-	status send_parse_error(command_parse_error code, std::uint32_t session);
-	status send_reply(const command_reply &reply);
+	status process_output();
 	status process_replies();
 	status process_sample();
 	status process_logs();
 	result<bool> process_diagnostic(std::uint32_t session);
-	status send_log_line(std::uint32_t timestamp_ms, const char *text, std::uint32_t session);
-	void reset_log_stream();
-	void reset_exchange();
+
 	status handle_event(const bluetooth_event &event);
+	status handle_link_changed(const bluetooth_link &link);
+	status handle_pairing_changed(bool active);
+	status handle_received(const bluetooth_event &event);
+	status handle_command(std::string_view text, std::uint32_t session);
+	status handle_log_stream(bool enabled, std::uint32_t session);
+	bool handle_failure(error failure, bool poll_failed);
+
+	status send_reply(const command_reply &reply);
 	status send_text(std::string_view text, std::uint32_t session);
 	status send_error(const char *text, std::uint32_t session);
-	status process_output();
+	status send_parse_error(command_parse_error code, std::uint32_t session);
+	status send_log_line(std::uint32_t timestamp_ms, const char *text, std::uint32_t session);
 
+	void reset_exchange();
+	void reset_session();
+	void reset_log_stream();
+
+private:
 	bluetooth_backend &backend_;
 	command_sink &commands_;
 	logger_service &logger_;
 	supervisor &monitor_;
 	const bluetooth_config config_;
+	indicator_service *indicator_;
+
+	TaskHandle_t task_ = nullptr;
 	QueueHandle_t replies_ = nullptr;
 	QueueHandle_t samples_ = nullptr;
 	QueueHandle_t logs_ = nullptr;
-	TaskHandle_t task_ = nullptr;
 
+	std::atomic<bool> pairing_window_requested_{false};
+	std::atomic<std::uint32_t> command_session_{0};
+	std::uint32_t blocked_session_ = 0;
 	bluetooth_link link_{};
+	bool advertise_pending_ = false;
+
 	std::optional<telemetry_sample> latest_sample_;
 	bool measurement_pending_ = false;
 	std::uint32_t request_id_ = 0;
-	bool advertise_pending_ = false;
+
 	struct log_message
 	{
 		std::uint32_t session;

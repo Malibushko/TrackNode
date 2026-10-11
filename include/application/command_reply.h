@@ -17,6 +17,10 @@ class command_reply_sink
 {
 public:
 	virtual ~command_reply_sink() = default;
+	virtual bool can_accept_session(std::uint32_t) const
+	{
+		return true;
+	}
 	virtual status submit_reply(const command_reply &reply) = 0;
 };
 

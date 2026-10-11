@@ -76,6 +76,9 @@ public:
 class fake_bluetooth final : public ble::bluetooth_backend
 {
 public:
+	bool pairing = false;
+	ble::status open_pairing_window() override { pairing = true; return {}; }
+	bool pairing_active() const override { return pairing; }
 	unsigned advertisements = 0;
 	unsigned stops = 0;
 	bool fail_init = false;
@@ -182,6 +185,9 @@ int main()
 			.session = session
 		});
 		require(bridge.poll().has_value());
+		require(transport.written.back().type == ble_bridge::frame_type::pairing_state);
+		require(transport.written.back().size == 1 && transport.written.back().payload[0] == 0);
+		transport.written.pop_back();
 		require(transport.written.back().type == ble_bridge::frame_type::ready);
 		require(transport.written.back().sequence == 19 && transport.written.back().session == session);
 	};
@@ -387,6 +393,27 @@ int main()
 	push(fresh);
 	require(bridge.poll().has_value());
 	require(bluetooth.session == 42 && !bluetooth.sent.empty());
+
+	push(ble_bridge::frame{
+		.type = ble_bridge::frame_type::enter_pairing,
+		.sequence = 99,
+		.session = 28
+	});
+	require(bridge.poll().has_value());
+	require(bluetooth.pairing && bluetooth.receive_session == 0);
+	const auto &pairing_ack = transport.written[transport.written.size() - 2];
+	require(pairing_ack.type == ble_bridge::frame_type::ack);
+	require(pairing_ack.sequence == 99 && pairing_ack.payload[0] == 0);
+	require(transport.written.back().type == ble_bridge::frame_type::pairing_state);
+	require(transport.written.back().size == 1 && transport.written.back().payload[0] == 1);
+	bluetooth.sent.clear();
+	push(fresh);
+	require(bridge.poll().has_value());
+	require(bluetooth.sent.empty());
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::not_ready));
+	bluetooth.pairing = false;
+	require(bridge.poll().has_value());
+	require(transport.written.back().type == ble_bridge::frame_type::pairing_state && transport.written.back().payload[0] == 0);
 
 	bluetooth.overflow = true;
 	require(bridge.poll().error().code == ble::error_code::overflow);

@@ -32,6 +32,8 @@ enum class frame_type : std::uint8_t
 	hello = 1,
 	send = 2,
 	measurement = 3,
+	enter_pairing = 4,
+	pairing_state = 0x87,
 	ready = 0x81,
 	link = 0x82,
 	received = 0x83,
@@ -85,7 +87,8 @@ inline void encode_link(frame &message, link_payload link)
 
 inline std::optional<link_payload> decode_link(const frame &message)
 {
-	if (message.size != link_payload_size || message.payload[0] > 1 || message.payload[1] > 1)
+	const auto invalid_link_encoding = message.size != link_payload_size || message.payload[0] > 1 || message.payload[1] > 1;
+	if (invalid_link_encoding)
 	{
 		return std::nullopt;
 	}

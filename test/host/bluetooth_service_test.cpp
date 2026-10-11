@@ -36,6 +36,7 @@ public:
 	bool fail_init = false;
 	bool busy_advertise = false;
 	bool restart_poll = false;
+	unsigned pairings = 0;
 
 	status init() override
 	{
@@ -60,6 +61,7 @@ public:
 
 		return {};
 	}
+	status open_pairing_window() override { ++pairings; return {}; }
 	status stop_advertise() override
 	{
 		return {};
@@ -252,9 +254,9 @@ int main()
 		require(value && value->sensor_sequence == 42 && value->temperature == -125 && value->pressure == 1000000);
 	}
 	cached.sensor.temperature_c = std::numeric_limits<float>::quiet_NaN();
-	require(!(make_bluetooth_measurement(cached, 100, 600000).flags & bluetooth_measurement::sensor_valid));
+	require(!(format_bluetooth_measurement(cached, 100, 600000).flags & bluetooth_measurement::sensor_valid));
 	cached.sensor.temperature_c = 400;
-	require(!(make_bluetooth_measurement(cached, 100, 600000).flags & bluetooth_measurement::sensor_valid));
+	require(!(format_bluetooth_measurement(cached, 100, 600000).flags & bluetooth_measurement::sensor_valid));
 	cache_service.stop();
 
 	fake_backend log_backend;
@@ -463,6 +465,47 @@ int main()
 	require(logger_fault != std::string::npos);
 	require(text.find("HEALTH logger degraded component=", logger_fault + 1) != std::string::npos);
 	diagnostic_service.stop();
+
+	fake_backend pairing_backend;
+	fake_commands pairing_commands;
+	bluetooth_service pairing_service{pairing_backend, pairing_commands, logger, monitor};
+	require(pairing_service.start().has_value());
+	pairing_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {true, true, 20, 500}
+	});
+	pairing_backend.before_finish = [&]
+	{
+		require(pairing_service.can_accept_session(500));
+		require(pairing_service.submit_reply(command_reply{.session = 500, .text = {'O', 'L', 'D'}}).has_value());
+		require(pairing_service.on_pairing_mode_requested().has_value());
+		require(!pairing_service.can_accept_session(500));
+		pairing_backend.events.push_back(bluetooth_event{
+			.type = bluetooth_event::kind::link_changed,
+			.link = {true, true, 20, 500}
+		});
+		pairing_backend.events.push_back(receive("PING", 500));
+		pairing_backend.events.push_back(bluetooth_event{
+			.type = bluetooth_event::kind::link_changed,
+			.link = {true, true, 20, 501}
+		});
+		pairing_backend.events.push_back(receive("PING", 501));
+	};
+	try
+	{
+		fake_task(fake_argument);
+	}
+	catch (const finished &)
+	{
+	}
+	text.clear();
+	for (const auto &chunk : pairing_backend.chunks)
+	{
+		text += chunk;
+	}
+	require(pairing_backend.pairings == 1 && text == "PONG\r\n");
+	require(pairing_commands.received.size() == 1 && pairing_commands.received.front().session == 501);
+	pairing_service.stop();
 
 	for (unsigned field = 0; field < 14; ++field)
 	{

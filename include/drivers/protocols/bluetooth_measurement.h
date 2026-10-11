@@ -64,11 +64,15 @@ inline T get(std::span<const std::uint8_t> input, std::size_t offset)
 
 inline bool valid(const snapshot &value)
 {
-	return (value.flags & ~std::uint8_t{31}) == 0 &&
-		(!(value.flags & sensor_valid) || (value.temperature >= -27315 && value.sensor_lifetime_ms != 0)) &&
-		((value.flags & gnss_present) || !(value.flags & (position_valid | speed_valid | utc_valid))) &&
-		(!(value.flags & position_valid) || (value.latitude >= -900000000 && value.latitude <= 900000000 &&
-			value.longitude >= -1800000000 && value.longitude <= 1800000000));
+	const auto only_wire_flags_present = (value.flags & ~std::uint8_t{31}) == 0;
+	const auto sensor_value_well_formed = !(value.flags & sensor_valid) ||
+		(value.temperature >= -27315 && value.sensor_lifetime_ms != 0);
+	const auto gnss_flags_consistent = (value.flags & gnss_present) ||
+		!(value.flags & (position_valid | speed_valid | utc_valid));
+	const auto position_in_geographic_range = !(value.flags & position_valid) ||
+		(value.latitude >= -900000000 && value.latitude <= 900000000 &&
+			value.longitude >= -1800000000 && value.longitude <= 1800000000);
+	return only_wire_flags_present && sensor_value_well_formed && gnss_flags_consistent && position_in_geographic_range;
 }
 
 inline std::array<std::uint8_t, wire_size> encode(const snapshot &value)
@@ -92,7 +96,8 @@ inline std::array<std::uint8_t, wire_size> encode(const snapshot &value)
 
 inline std::optional<snapshot> decode(std::span<const std::uint8_t> input)
 {
-	if (input.size() != wire_size || input[0] != schema)
+	const auto unsupported_snapshot_format = input.size() != wire_size || input[0] != schema;
+	if (unsupported_snapshot_format)
 	{
 		return std::nullopt;
 	}

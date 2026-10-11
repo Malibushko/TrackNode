@@ -93,7 +93,8 @@ tl::expected<std::size_t, ble_bridge::codec_error> decode_cobs(
 	{
 		const auto code = input[read_position++];
 		const auto count = static_cast<std::size_t>(code) - 1;
-		if (code == 0 || count > input.size() - read_position)
+		const auto cobs_block_truncated_or_invalid = code == 0 || count > input.size() - read_position;
+		if (cobs_block_truncated_or_invalid)
 		{
 			return tl::make_unexpected(ble_bridge::codec_error::invalid_cobs);
 		}
@@ -114,7 +115,8 @@ tl::expected<std::size_t, ble_bridge::codec_error> decode_cobs(
 			output[write_position++] = byte;
 		}
 
-		if (code != full_cobs_block && read_position < input.size())
+		const auto block_boundary_represents_zero = code != full_cobs_block && read_position < input.size();
+		if (block_boundary_represents_zero)
 		{
 			if (write_position == output.size())
 			{
@@ -166,7 +168,8 @@ tl::expected<std::size_t, codec_error> bridge_codec::encode(
 
 tl::expected<frame, codec_error> bridge_codec::decode(std::span<const std::uint8_t> input) const
 {
-	if (input.empty() || input.back() != 0)
+	const auto frame_delimiter_missing = input.empty() || input.back() != 0;
+	if (frame_delimiter_missing)
 	{
 		return tl::make_unexpected(codec_error::missing_delimiter);
 	}

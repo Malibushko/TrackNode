@@ -35,6 +35,8 @@ zephyr_uart::zephyr_uart(const device &transport, uart_config config)
 	k_mutex_init(&transmit_mutex_);
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 status zephyr_uart::init()
 {
 	if (!device_is_ready(&transport_))
@@ -85,6 +87,8 @@ status zephyr_uart::init()
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void zephyr_uart::stop()
 {
 	const auto key = k_spin_lock(&lock_);
@@ -104,6 +108,9 @@ void zephyr_uart::stop()
 	k_sem_give(&receive_ready_);
 	k_sem_give(&transmit_done_);
 }
+
+//////////////////////////////////////////////////////////////////////////
+
 
 status zephyr_uart::write(data_view data, std::uint32_t timeout_ms)
 {
@@ -132,7 +139,8 @@ status zephyr_uart::write(data_view data, std::uint32_t timeout_ms)
 		return {};
 	}
 
-	if (timeout_ms == 0 || sys_timepoint_expired(deadline))
+	const auto transmit_deadline_expired = timeout_ms == 0 || sys_timepoint_expired(deadline);
+	if (transmit_deadline_expired)
 	{
 		k_spin_unlock(&lock_, key);
 		k_mutex_unlock(&transmit_mutex_);
@@ -174,6 +182,8 @@ status zephyr_uart::write(data_view data, std::uint32_t timeout_ms)
 	return {};
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 result<std::size_t> zephyr_uart::read(mutable_data_view output, std::uint32_t timeout_ms)
 {
 	if (output.capacity != 0 && output.data == nullptr)
@@ -190,7 +200,8 @@ result<std::size_t> zephyr_uart::read(mutable_data_view output, std::uint32_t ti
 	while (true)
 	{
 		const auto key = k_spin_lock(&lock_);
-		if (!initialized_ || receive_error_)
+		const auto receive_stream_unavailable = !initialized_ || receive_error_;
+		if (receive_stream_unavailable)
 		{
 			const auto code = initialized_ ? error_code::io : error_code::not_initialized;
 			receive_error_ = false;
@@ -218,15 +229,21 @@ result<std::size_t> zephyr_uart::read(mutable_data_view output, std::uint32_t ti
 	}
 }
 
+//////////////////////////////////////////////////////////////////////////
+
+
 void zephyr_uart::interrupt(const device *, void *context)
 {
 	static_cast<zephyr_uart *>(context)->handle_interrupt();
 }
 
+//////////////////////////////////////////////////////////////////////////
+
 void zephyr_uart::handle_interrupt()
 {
 	const auto key = k_spin_lock(&lock_);
-	if (!initialized_ || uart_irq_update(&transport_) <= 0)
+	const auto interrupt_cannot_be_processed = !initialized_ || uart_irq_update(&transport_) <= 0;
+	if (interrupt_cannot_be_processed)
 	{
 		k_spin_unlock(&lock_, key);
 		return;
@@ -262,7 +279,8 @@ void zephyr_uart::handle_interrupt()
 		}
 	}
 
-	if (transmit_data_ != nullptr && uart_irq_tx_ready(&transport_) > 0)
+	const auto transmit_interrupt_ready = transmit_data_ != nullptr && uart_irq_tx_ready(&transport_) > 0;
+	if (transmit_interrupt_ready)
 	{
 		if (transmit_remaining_ == 0)
 		{

@@ -35,14 +35,19 @@ public:
 
 	status start();
 	void stop();
+
 	status poll();
 
 private:
-
 	status poll_transport();
 	status poll_bluetooth();
-	status request_handshake();
 	status drain_bluetooth();
+
+	status update_handshake();
+	status update_state();
+	status update_pairing_state();
+
+	status handle_frame(const ble_bridge::frame &frame);
 	status handle_link_changed(const bluetooth_event &event);
 	status handle_received(const bluetooth_event &event);
 	status handle_hello(const ble_bridge::frame &frame);
@@ -50,11 +55,12 @@ private:
 	status handle_measurement(const ble_bridge::frame &frame);
 	status handle_advertise(const ble_bridge::frame &frame);
 	status handle_stop_advertise(const ble_bridge::frame &frame);
-	static ble_bridge::ack_code status_to_ack(const status &outcome);
-	status write_ack(const ble_bridge::frame &request, const status &outcome);
-	status handle_frame(const ble_bridge::frame &frame);
+	status handle_enter_pairing(const ble_bridge::frame &frame);
+
 	status write_frame(const ble_bridge::frame &frame);
 	status write_link(ble_bridge::frame_type type, ble_bridge::sequence_type sequence = 0);
+	status write_ack(const ble_bridge::frame &request, const status &outcome);
+	static ble_bridge::ack_code status_to_ack(const status &outcome);
 
 private:
 	bridge_config &config_;
@@ -63,8 +69,12 @@ private:
 
 	ble::bluetooth_link link_{};
 	ble_bridge::session_type bridge_session_ = 0;
+
 	std::uint32_t last_handshake_ms_ = 0;
 	bool handshake_requested_ = false;
+
+	bool reported_pairing_ = false;
+
 	bool initialized_{ false };
 };
 }

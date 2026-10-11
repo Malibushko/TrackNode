@@ -11,16 +11,22 @@ class bluetooth_backend
 {
 public:
 	virtual ~bluetooth_backend() = default;
+
 	virtual status init() = 0;
 	virtual void stop() = 0;
+
+	virtual status open_pairing_window() = 0;
+	virtual bool pairing_active() const = 0;
 
 	virtual status start_advertise() = 0;
 	virtual status stop_advertise() = 0;
 
 	virtual status send(data_view data, session_t session) = 0;
 	virtual void set_receive_session(session_t session) = 0;
+
 	virtual status update_measurement(const bluetooth_measurement::snapshot &value) = 0;
 	virtual void reset_measurement() = 0;
+
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
 };
 }

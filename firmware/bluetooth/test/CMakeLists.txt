@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.24)
 project(BluetoothUartTest LANGUAGES CXX)
 enable_testing()
+add_compile_definitions(CONFIG_BT_MAX_PAIRED=8)
+
+add_executable(pairing_test pairing_test.cpp
+    ../src/drivers/devices/zephyr_bluetooth.cpp
+    ../src/drivers/devices/zephyr_gatt_server.cpp)
+target_compile_features(pairing_test PRIVATE cxx_std_20)
+target_include_directories(pairing_test PRIVATE fake ../include ../../../include ../../../lib/expected/include)
+target_compile_options(pairing_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME pairing_test COMMAND pairing_test)
 add_executable(zephyr_uart_test zephyr_uart_test.cpp ../src/drivers/devices/zephyr_uart.cpp)
 target_compile_features(zephyr_uart_test PRIVATE cxx_std_20)
 target_include_directories(zephyr_uart_test PRIVATE fake ../include ../../../lib/expected/include)

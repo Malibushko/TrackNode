@@ -2,6 +2,7 @@ using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Storage.Streams;
+using Windows.Devices.Enumeration;
 using System.IO;
 
 namespace TrackNode.DevTools;
@@ -71,6 +72,14 @@ public sealed class BleTransport : IDisposable
         {
             device = await BluetoothLEDevice.FromBluetoothAddressAsync(address);
             if (device is null) throw new IOException("Windows could not open the device. Check Bluetooth and permissions.");
+            if (!device.DeviceInformation.Pairing.IsPaired)
+            {
+                LinkChanged?.Invoke("Pairing · hold KEY for 5 seconds to open the 60-second window", connecting);
+                var pairing = await device.DeviceInformation.Pairing.PairAsync(DevicePairingProtectionLevel.Encryption);
+                if (connecting != Generation) throw new IOException("Connection changed during pairing.");
+                if (pairing.Status is not (DevicePairingResultStatus.Paired or DevicePairingResultStatus.AlreadyPaired))
+                    throw new IOException($"Pairing failed: {pairing.Status}. Hold KEY for 5 seconds and reconnect within 60 seconds.");
+            }
             var services = await device.GetGattServicesForUuidAsync(ServiceUuid, BluetoothCacheMode.Uncached);
             if (services.Status != GattCommunicationStatus.Success || services.Services.Count == 0)
                 throw new IOException($"TrackNode service discovery: {services.Status}");
@@ -118,11 +127,12 @@ public sealed class BleTransport : IDisposable
                 if (connecting != Generation) throw new IOException("Connection changed during measurement discovery.");
                 if (result.Status == GattCommunicationStatus.Success)
                     MeasurementReceived?.Invoke(characteristic.Uuid, ReadBytes(result.Value), connecting);
-                else if (!(result.Status == GattCommunicationStatus.ProtocolError && result.ProtocolError == 0x0e &&
-                    (characteristic.Uuid == Measurements.TemperatureUuid || characteristic.Uuid == Measurements.PressureUuid)))
+                else if (!IsUnavailableSensorReading(result, characteristic.Uuid))
                     throw new IOException($"Measurement read: {result.Status}, ATT error {result.ProtocolError}");
             }
-            if (connecting != Generation || device is null || device.ConnectionStatus != BluetoothConnectionStatus.Connected)
+            var connectionChangedDuringSubscription = connecting != Generation || device is null ||
+                device.ConnectionStatus != BluetoothConnectionStatus.Connected;
+            if (connectionChangedDuringSubscription)
                 throw new IOException("Device disconnected during subscription.");
             ready = true;
             LinkChanged?.Invoke($"Subscribed · MTU {session.MaxPduSize} · payload {MaxPayload} B", generation);
@@ -142,7 +152,8 @@ public sealed class BleTransport : IDisposable
         using var writer = new DataWriter();
         writer.WriteBytes(data);
         var result = await characteristic.WriteValueWithResultAsync(writer.DetachBuffer(), GattWriteOption.WriteWithResponse);
-        if (current != generation || !Ready) throw new IOException("Connection changed while sending.");
+        var connectionChangedWhileSending = current != generation || !Ready;
+        if (connectionChangedWhileSending) throw new IOException("Connection changed while sending.");
         if (result.Status != GattCommunicationStatus.Success)
             throw new IOException($"GATT Write failed: {result.Status}, ATT error {result.ProtocolError?.ToString() ?? "none"}. Command outcome may be unknown.");
     }
@@ -165,9 +176,18 @@ public sealed class BleTransport : IDisposable
         return bytes;
     }
 
+    private static bool IsUnavailableSensorReading(GattReadResult result, Guid characteristic)
+    {
+        var sensorCharacteristic = characteristic == Measurements.TemperatureUuid ||
+            characteristic == Measurements.PressureUuid;
+        return result.Status == GattCommunicationStatus.ProtocolError && result.ProtocolError == 0x0e &&
+            sensorCharacteristic;
+    }
+
     private void OnMeasurement(GattCharacteristic sender, GattValueChangedEventArgs args)
     {
-        if (measurements.TryGetValue(sender, out var current) && current == Generation)
+        var measurementFromCurrentConnection = measurements.TryGetValue(sender, out var current) && current == Generation;
+        if (measurementFromCurrentConnection)
             MeasurementReceived?.Invoke(sender.Uuid, ReadBytes(args.CharacteristicValue), current);
     }
 
@@ -178,13 +198,15 @@ public sealed class BleTransport : IDisposable
         if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
         {
             ready = false;
+            if (session is not null) session.MaintainConnection = false;
             LinkChanged?.Invoke("Disconnected by device", current);
         }
     }
 
     private void OnMtuChanged(GattSession sender, object args)
     {
-        if (sender == session && Ready) LinkChanged?.Invoke($"Subscribed · MTU {sender.MaxPduSize} · payload {MaxPayload} B", generation);
+        var mtuFromCurrentSession = sender == session && Ready;
+        if (mtuFromCurrentSession) LinkChanged?.Invoke($"Subscribed · MTU {sender.MaxPduSize} · payload {MaxPayload} B", generation);
     }
 
     public void Disconnect()

@@ -5,6 +5,13 @@ target_include_directories(host_headers INTERFACE
     "${PROJECT_SOURCE_DIR}/lib/expected/include"
 )
 
+add_executable(control_button_gesture_test control_button_gesture_test.cpp)
+target_link_libraries(control_button_gesture_test PRIVATE host_headers)
+add_test(NAME control_button_gesture_test COMMAND control_button_gesture_test)
+if(MINGW)
+    target_link_options(control_button_gesture_test PRIVATE -static-libgcc -static-libstdc++)
+endif()
+
 add_executable(board_state_service_test board_state_service_test.cpp
     "${PROJECT_SOURCE_DIR}/src/infrastructure/board_state_service.cpp")
 target_include_directories(board_state_service_test PRIVATE board_state_fakes)

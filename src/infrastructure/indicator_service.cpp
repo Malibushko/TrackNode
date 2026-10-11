@@ -84,7 +84,7 @@ status indicator_service::ping()
 
 void indicator_service::update_once(TickType_t now)
 {
-	if (auto result = indicator_.update(now, monitor_.state()); !result)
+	if (auto result = indicator_.update(now, monitor_.state(), pairing_.load()); !result)
 	{
 		ready_.store(false);
 		monitor_.report(service_id::indicator, result.error(), service_health::failed);

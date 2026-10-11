@@ -3,6 +3,7 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     command_parser.cpp
     track_node_control_protocol.cpp
     indicator_service.cpp
+    control_button_service.cpp
     logger_service.cpp
     sensor_service.cpp
     board_state_service.cpp

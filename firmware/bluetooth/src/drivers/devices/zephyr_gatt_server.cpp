@@ -23,26 +23,26 @@ BT_GATT_SERVICE_DEFINE(
 	environmental_service,
 	BT_GATT_PRIMARY_SERVICE(&gatt_uuid::environmental_sensing.uuid),
 	BT_GATT_CHARACTERISTIC(&gatt_uuid::temperature.uuid, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-		BT_GATT_PERM_READ, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
-	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+		BT_GATT_PERM_READ_ENCRYPT, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
+	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
 	BT_GATT_CHARACTERISTIC(&gatt_uuid::pressure.uuid, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-		BT_GATT_PERM_READ, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
-	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
+		BT_GATT_PERM_READ_ENCRYPT, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
+	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT)
 );
 
 BT_GATT_SERVICE_DEFINE(
 	tracknode_service,
 	BT_GATT_PRIMARY_SERVICE(&gatt_uuid::service.uuid),
 	BT_GATT_CHARACTERISTIC(&gatt_uuid::gnss.uuid, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-		BT_GATT_PERM_READ, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
-	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+		BT_GATT_PERM_READ_ENCRYPT, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
+	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
 	BT_GATT_CHARACTERISTIC(&gatt_uuid::measurement_status.uuid, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-		BT_GATT_PERM_READ, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
-	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+		BT_GATT_PERM_READ_ENCRYPT, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
+	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
 	BT_GATT_CHARACTERISTIC(
 		&gatt_uuid::rx.uuid,
 		BT_GATT_CHRC_WRITE,
-		BT_GATT_PERM_WRITE,
+		BT_GATT_PERM_WRITE_ENCRYPT,
 		nullptr,
 		zephyr_gatt_server::on_rx_write,
 		nullptr
@@ -55,7 +55,7 @@ BT_GATT_SERVICE_DEFINE(
 		nullptr,
 		nullptr
 	),
-	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE)
+	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT)
 );
 
 const bt_gatt_attr *tx_attribute()
@@ -83,7 +83,8 @@ measurement_bytes encode_characteristic(std::size_t index, const bluetooth_measu
 {
 	using namespace bluetooth_measurement;
 	measurement_bytes bytes;
-	if (index < 2 && !(value.flags & sensor_valid))
+	const auto sensor_characteristic_without_value = index < 2 && !(value.flags & sensor_valid);
+	if (sensor_characteristic_without_value)
 	{
 		return bytes;
 	}
@@ -147,6 +148,7 @@ zephyr_gatt_server::~zephyr_gatt_server()
 
 //////////////////////////////////////////////////////////////////////////
 
+
 status zephyr_gatt_server::bind(gatt_callbacks callbacks)
 {
 	if (callbacks.context == nullptr || callbacks.received == nullptr)
@@ -186,6 +188,7 @@ void zephyr_gatt_server::unbind()
 
 //////////////////////////////////////////////////////////////////////////
 
+
 status zephyr_gatt_server::notify(bt_conn *connection, data_view data)
 {
 	{
@@ -193,6 +196,11 @@ status zephyr_gatt_server::notify(bt_conn *connection, data_view data)
 		if (instance != this)
 		{
 			return fail(component::bluetooth, error_code::not_initialized);
+		}
+		const auto notification_access_denied = callbacks_.authorized && !callbacks_.authorized(callbacks_.context, connection);
+		if (notification_access_denied)
+		{
+			return fail(component::bluetooth, error_code::not_connected);
 		}
 	}
 
@@ -207,7 +215,8 @@ status zephyr_gatt_server::notify(bt_conn *connection, data_view data)
 		return fail(component::bluetooth, error_code::not_connected);
 	}
 
-	if (data.size > capacity || (data.size != 0 && data.data == nullptr))
+	const auto invalid_notification_payload = data.size > capacity || (data.size != 0 && data.data == nullptr);
+	if (invalid_notification_payload)
 	{
 		return fail(component::bluetooth, error_code::invalid_config);
 	}
@@ -245,6 +254,23 @@ bool zephyr_gatt_server::is_subscribed(bt_conn *connection) const
 }
 
 //////////////////////////////////////////////////////////////////////////
+
+std::uint16_t zephyr_gatt_server::max_payload(bt_conn *connection)
+{
+	if (connection == nullptr)
+	{
+		return 0;
+	}
+
+	const auto mtu = bt_gatt_get_mtu(connection);
+
+	return mtu > att_value_header_size
+		? static_cast<std::uint16_t>(std::min<std::size_t>(event_payload_capacity, mtu - att_value_header_size))
+		: 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 
 status zephyr_gatt_server::update_measurement(const bluetooth_measurement::snapshot &value)
 {
@@ -288,7 +314,8 @@ void zephyr_gatt_server::notify_measurements(bt_conn *connection)
 			return;
 		}
 		value = measurements_.current(k_uptime_get());
-		if (value.flags != last_flags_)
+		const auto measurement_status_changed = value.flags != last_flags_;
+		if (measurement_status_changed)
 		{
 			++revision_;
 			pending_ |= measurement_metadata;
@@ -297,7 +324,8 @@ void zephyr_gatt_server::notify_measurements(bt_conn *connection)
 		revision = revision_;
 		pending = pending_;
 	}
-	if (!connection)
+	const auto measurement_access_denied = !connection || !callbacks_.authorized || !callbacks_.authorized(callbacks_.context, connection);
+	if (measurement_access_denied)
 	{
 		return;
 	}
@@ -305,17 +333,20 @@ void zephyr_gatt_server::notify_measurements(bt_conn *connection)
 	{
 		const auto mask = static_cast<std::uint8_t>(1 << index);
 		const auto *attribute = measurement_attribute(index);
-		if (!(pending & mask) || !bt_gatt_is_subscribed(connection, attribute, BT_GATT_CCC_NOTIFY))
+		const auto measurement_notification_not_needed = !(pending & mask) || !bt_gatt_is_subscribed(connection, attribute, BT_GATT_CCC_NOTIFY);
+		if (measurement_notification_not_needed)
 		{
 			continue;
 		}
 		const auto bytes = encode_characteristic(index, value);
-		if (bytes.size != 0 && bt_gatt_notify(connection, attribute, bytes.data.data(), bytes.size) != 0)
+		const auto notification_failed = bytes.size != 0 && bt_gatt_notify(connection, attribute, bytes.data.data(), bytes.size) != 0;
+		if (notification_failed)
 		{
 			continue;
 		}
 		mutex_lock_guard guard{binding_mutex};
-		if (revision_ == revision)
+		const auto notified_revision_still_current = revision_ == revision;
+		if (notified_revision_still_current)
 		{
 			pending_ &= ~mask;
 		}
@@ -323,6 +354,7 @@ void zephyr_gatt_server::notify_measurements(bt_conn *connection)
 }
 
 //////////////////////////////////////////////////////////////////////////
+
 
 ssize_t zephyr_gatt_server::on_measurement_read(bt_conn *connection, const bt_gatt_attr *attribute,
 	void *buffer, std::uint16_t length, std::uint16_t offset)
@@ -333,6 +365,11 @@ ssize_t zephyr_gatt_server::on_measurement_read(bt_conn *connection, const bt_ga
 		if (!instance)
 		{
 			return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+		}
+		const auto measurement_access_denied = !instance->callbacks_.authorized || !instance->callbacks_.authorized(instance->callbacks_.context, connection);
+		if (measurement_access_denied)
+		{
+			return BT_GATT_ERR(BT_ATT_ERR_AUTHORIZATION);
 		}
 		const auto value = instance->measurements_.current(k_uptime_get());
 		for (std::size_t index = 0; index < 4; ++index)
@@ -349,22 +386,6 @@ ssize_t zephyr_gatt_server::on_measurement_read(bt_conn *connection, const bt_ga
 		return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
 	}
 	return bt_gatt_attr_read(connection, attribute, buffer, length, offset, bytes.data.data(), bytes.size);
-}
-
-//////////////////////////////////////////////////////////////////////////
-
-std::uint16_t zephyr_gatt_server::max_payload(bt_conn *connection)
-{
-	if (connection == nullptr)
-	{
-		return 0;
-	}
-
-	const auto mtu = bt_gatt_get_mtu(connection);
-
-	return mtu > att_value_header_size
-		? static_cast<std::uint16_t>(std::min<std::size_t>(event_payload_capacity, mtu - att_value_header_size))
-		: 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -389,7 +410,8 @@ ssize_t zephyr_gatt_server::on_rx_write(
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
 	}
 
-	if (length > event_payload_capacity || (length != 0 && buffer == nullptr))
+	const auto invalid_command_payload = length > event_payload_capacity || (length != 0 && buffer == nullptr);
+	if (invalid_command_payload)
 	{
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
 	}

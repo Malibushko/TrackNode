@@ -145,3 +145,6 @@ inline int bt_gatt_notify(bt_conn *, const bt_gatt_attr *attribute, const void *
  ++notification_count;
 	return 0;
 }
+
+inline constexpr int BT_GATT_PERM_READ_ENCRYPT = 4;
+inline constexpr int BT_GATT_PERM_WRITE_ENCRYPT = 8;

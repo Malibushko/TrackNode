@@ -12,7 +12,7 @@ public:
 
 	void start_blink(uint8_t count, uint32_t now)
 	{
-		if (state_ != program_state::ok || count == 0 || busy())
+		if (pairing_ || state_ != program_state::ok || count == 0 || busy())
 		{
 			return;
 		}
@@ -28,7 +28,7 @@ public:
 		return phase_ != phase::idle;
 	}
 
-	status update(uint32_t now, program_state state)
+	status update(uint32_t now, program_state state, bool pairing = false)
 	{
 		if (state != state_)
 		{
@@ -42,7 +42,23 @@ public:
 			}
 		}
 
-		if (phase_ != phase::idle)
+		const bool pairing_visible = pairing && state == program_state::ok;
+		if (pairing_visible != pairing_)
+		{
+			pairing_ = pairing_visible;
+			if (state == program_state::ok)
+			{
+				phase_ = phase::idle;
+				changed_at_ = now;
+				output_high_ = true;
+			}
+		}
+		if (pairing_ && now - changed_at_ >= 250u)
+		{
+			changed_at_ = now;
+			output_high_ = !output_high_;
+		}
+		if (!pairing_ && phase_ != phase::idle)
 		{
 			const uint32_t duration = phase_ == phase::gap ? 1000u : 150u;
 
@@ -123,5 +139,6 @@ private:
 	uint16_t transitions_left_ = 0;
 	bool output_high_ = true;
 	bool written_ = false;
+	bool pairing_ = false;
 	bool last_output_ = false;
 };

@@ -8,6 +8,7 @@
 #include "infrastructure/console_service.h"
 #include "infrastructure/sensor_service.h"
 #include "infrastructure/board_state_service.h"
+#include "infrastructure/control_button_service.h"
 #include "infrastructure/gnss_service.h"
 
 #if TRACK_NODE_ENABLE_LORA
@@ -41,6 +42,7 @@ struct firmware_composition
 	gnss_service *gnss = nullptr;
 	storage_service *records = nullptr;
 
+	bluetooth_service *bluetooth = nullptr;
 	track_node *runtime = nullptr;
 };
 
@@ -343,7 +345,8 @@ status configure_bluetooth(firmware_composition &application)
 	}};
 
 	static xiao_ble_bridge backend{transport};
-	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor, bluetooth_config{}};
+	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor, bluetooth_config{}, application.indicator};
+	application.bluetooth = &bluetooth;
 
 	return application.services.add(service_id::bluetooth, bluetooth, {service_id::logger})
 	    .and_then([&]{ return application.telemetry.add(bluetooth); });
@@ -352,6 +355,32 @@ status configure_bluetooth(firmware_composition &application)
 
 	return {};
 #endif
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status configure_control_button(firmware_composition &application)
+{
+	if (!application.bluetooth)
+	{
+		return {};
+	}
+
+	static constexpr std::uint32_t pairing_hold_ms = 5000;
+	static constexpr std::uint32_t hold_thresholds_ms[]{pairing_hold_ms};
+	static control_button_service button{control_button_config{
+		.input = gpio_config{
+			.pin = {GPIOA, GPIO_PIN_0},
+			.mode = GPIO_MODE_INPUT,
+			.pull = GPIO_PULLUP,
+			.active_low = true
+		},
+		.poll_ms = 10,
+		.debounce_ms = 30,
+		.hold_thresholds_ms = hold_thresholds_ms,
+		.pairing_hold_ms = pairing_hold_ms
+	}, *application.bluetooth, *application.monitor};
+	return application.services.add(service_id::control_button, button, {service_id::bluetooth});
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -439,6 +468,7 @@ int main()
 	    .and_then([&]{ return configure_storage(application); })
 	    .and_then([&]{ return configure_radio(application); })
 	    .and_then([&]{ return configure_bluetooth(application); })
+	    .and_then([&]{ return configure_control_button(application); })
 	    .and_then([&]{ return configure_controller(application); })
 	    .and_then([&]{ return configure_runtime(application); });
 

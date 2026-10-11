@@ -18,6 +18,7 @@ public: // Common lifecycle
 public: // Indicator API
 	status init_diagnostic();
 	status ping();
+	void set_pairing(bool active) { pairing_.store(active); }
 	void update_once(TickType_t now);
 	[[nodiscard]] bool diagnostic_ready() const { return ready_.load(); }
 
@@ -32,5 +33,6 @@ private: // State
 	supervisor &monitor_;
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;
+	std::atomic<bool> pairing_{false};
 	std::atomic<bool> ready_{ false };
 };

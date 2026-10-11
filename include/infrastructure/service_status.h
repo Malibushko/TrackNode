@@ -27,6 +27,7 @@ enum class service_id : std::uint8_t
 	gnss,
 	radio,
 	bluetooth,
+	control_button,
 	count
 };
 

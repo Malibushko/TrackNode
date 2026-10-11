@@ -209,5 +209,17 @@ int main()
 	burst = 0;
 	backend.stop();
 	require(backend.init().has_value());
+	(void)backend.poll(0);
+	require(backend.open_pairing_window().has_value());
+	require(last_send.type == ble_bridge::frame_type::enter_pairing && last_send.size == 0);
+	push(ble_bridge::frame{
+		.type = ble_bridge::frame_type::pairing_state,
+		.session = last_send.session,
+		.size = 1,
+		.payload = {1}
+	});
+	const auto pairing = backend.poll(0);
+	require(pairing && pairing->type == bluetooth_event::kind::pairing_changed && pairing->pairing);
+	require(!backend.send(payload, last_send.session));
 	std::cout << "Handshake, fragmented UART, ACK matching, interleaved RX, stale sessions and timeout passed\n";
 }

@@ -32,11 +32,13 @@ public:
 		const auto elapsed = static_cast<std::uint32_t>(std::min<std::uint64_t>(now - received_at_, UINT32_MAX));
 		value.sensor_age_ms = add_age(value.sensor_age_ms, elapsed);
 		value.gnss_age_ms = add_age(value.gnss_age_ms, elapsed);
-		if (value.sensor_age_ms >= value.sensor_lifetime_ms)
+		const auto sensor_value_expired = value.sensor_age_ms >= value.sensor_lifetime_ms;
+		if (sensor_value_expired)
 		{
 			value.flags &= ~sensor_valid;
 		}
-		if ((value.flags & gnss_present) && value.gnss_age_ms <= gnss_freshness_ms)
+		const auto gnss_value_is_fresh = (value.flags & gnss_present) && value.gnss_age_ms <= gnss_freshness_ms;
+		if (gnss_value_is_fresh)
 		{
 			value.flags |= gnss_fresh;
 		}

@@ -24,6 +24,8 @@ const char *service_name(service_id id)
 			return "radio";
 		case service_id::bluetooth:
 			return "bluetooth";
+		case service_id::control_button:
+			return "control_button";
 		case service_id::count:
 			break;
 	}
