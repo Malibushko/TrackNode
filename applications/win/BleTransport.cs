@@ -1,0 +1,167 @@
+using Windows.Devices.Bluetooth;
+using Windows.Devices.Bluetooth.Advertisement;
+using Windows.Devices.Bluetooth.GenericAttributeProfile;
+using Windows.Storage.Streams;
+using System.IO;
+
+namespace TrackNode.DevTools;
+
+public sealed record NearbyDevice(ulong Address, string Name, short Rssi)
+{
+    public string AddressText => string.Join(":", Enumerable.Range(0, 6).Reverse().Select(i => ((Address >> (8 * i)) & 255).ToString("X2")));
+    public string Description => $"{Name}  ·  {Rssi} dBm\n{AddressText}";
+}
+
+public sealed class BleTransport : IDisposable
+{
+    public static readonly Guid ServiceUuid = new("e0910001-7e83-4c9c-a89e-bfe03c940001");
+    private static readonly Guid RxUuid = new("e0910002-7e83-4c9c-a89e-bfe03c940001");
+    private static readonly Guid TxUuid = new("e0910003-7e83-4c9c-a89e-bfe03c940001");
+    private BluetoothLEAdvertisementWatcher? watcher;
+    private BluetoothLEDevice? device;
+    private GattDeviceService? service;
+    private GattSession? session;
+    private GattCharacteristic? rx;
+    private GattCharacteristic? tx;
+    private int generation;
+    private int scanGeneration;
+    private volatile bool ready;
+    public int Generation => Volatile.Read(ref generation);
+    public int MaxPayload => Math.Min(128, Math.Max(0, (session?.MaxPduSize ?? 23) - 3));
+    public bool Ready => ready;
+    public event Action<NearbyDevice>? Discovered;
+    public event Action<string>? ScanStopped;
+    public event Action<byte[], int>? Received;
+    public event Action<string, int>? LinkChanged;
+
+    public void StartScan()
+    {
+        StopScan();
+        var current = ++scanGeneration;
+        watcher = new() { ScanningMode = BluetoothLEScanningMode.Active };
+        watcher.Received += (_, args) =>
+        {
+            if (current != scanGeneration) return;
+            var name = args.Advertisement.LocalName;
+            if (name.StartsWith("TrackNode", StringComparison.OrdinalIgnoreCase) || args.Advertisement.ServiceUuids.Contains(ServiceUuid))
+                Discovered?.Invoke(new(args.BluetoothAddress, string.IsNullOrEmpty(name) ? "TrackNode" : name, args.RawSignalStrengthInDBm));
+        };
+        watcher.Stopped += (_, args) =>
+        {
+            if (current == scanGeneration) ScanStopped?.Invoke(args.Error.ToString());
+        };
+        watcher.Start();
+    }
+
+    public void StopScan()
+    {
+        ++scanGeneration;
+        watcher?.Stop();
+        watcher = null;
+    }
+
+    public async Task ConnectAsync(ulong address)
+    {
+        Disconnect();
+        try
+        {
+            device = await BluetoothLEDevice.FromBluetoothAddressAsync(address);
+            if (device is null) throw new IOException("Windows could not open the device. Check Bluetooth and permissions.");
+            var services = await device.GetGattServicesForUuidAsync(ServiceUuid, BluetoothCacheMode.Uncached);
+            if (services.Status != GattCommunicationStatus.Success || services.Services.Count == 0)
+                throw new IOException($"TrackNode service discovery: {services.Status}");
+            service = services.Services[0];
+            foreach (var unused in services.Services.Skip(1)) unused.Dispose();
+            session = await GattSession.FromDeviceIdAsync(device.BluetoothDeviceId);
+            if (session is null) throw new IOException("Windows could not create a GATT session.");
+            session.MaintainConnection = true;
+            var characteristics = await service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached);
+            if (characteristics.Status != GattCommunicationStatus.Success)
+                throw new IOException($"Characteristic discovery: {characteristics.Status}");
+            rx = characteristics.Characteristics.SingleOrDefault(c => c.Uuid == RxUuid);
+            tx = characteristics.Characteristics.SingleOrDefault(c => c.Uuid == TxUuid);
+            if (rx is null || tx is null || !rx.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Write) ||
+                !tx.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
+                throw new IOException("Required RX Write / TX Notify characteristics are missing.");
+            tx.ValueChanged += OnReceived;
+            device.ConnectionStatusChanged += OnConnectionChanged;
+            session.MaxPduSizeChanged += OnMtuChanged;
+            var subscribed = await tx.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+            if (subscribed != GattCommunicationStatus.Success) throw new IOException($"Subscribe failed: {subscribed}");
+            if (device.ConnectionStatus != BluetoothConnectionStatus.Connected) throw new IOException("Device disconnected during subscription.");
+            ready = true;
+            LinkChanged?.Invoke($"Subscribed · MTU {session.MaxPduSize} · payload {MaxPayload} B", generation);
+        }
+        catch
+        {
+            Disconnect();
+            throw;
+        }
+    }
+
+    public async Task WriteAsync(byte[] data)
+    {
+        var current = generation;
+        var characteristic = rx;
+        if (!Ready || characteristic is null) throw new IOException("Connect and subscribe first.");
+        using var writer = new DataWriter();
+        writer.WriteBytes(data);
+        var result = await characteristic.WriteValueWithResultAsync(writer.DetachBuffer(), GattWriteOption.WriteWithResponse);
+        if (current != generation || !Ready) throw new IOException("Connection changed while sending.");
+        if (result.Status != GattCommunicationStatus.Success)
+            throw new IOException($"GATT Write failed: {result.Status}, ATT error {result.ProtocolError?.ToString() ?? "none"}. Command outcome may be unknown.");
+    }
+
+    private void OnReceived(GattCharacteristic sender, GattValueChangedEventArgs args)
+    {
+        var current = Generation;
+        if (sender != tx) return;
+        using var reader = DataReader.FromBuffer(args.CharacteristicValue);
+        var bytes = new byte[reader.UnconsumedBufferLength];
+        reader.ReadBytes(bytes);
+        Received?.Invoke(bytes, current);
+    }
+
+    private void OnConnectionChanged(BluetoothLEDevice sender, object args)
+    {
+        var current = Generation;
+        if (sender != device) return;
+        if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
+        {
+            ready = false;
+            LinkChanged?.Invoke("Disconnected by device", current);
+        }
+    }
+
+    private void OnMtuChanged(GattSession sender, object args)
+    {
+        if (sender == session && Ready) LinkChanged?.Invoke($"Subscribed · MTU {sender.MaxPduSize} · payload {MaxPayload} B", generation);
+    }
+
+    public void Disconnect()
+    {
+        ready = false;
+        Interlocked.Increment(ref generation);
+        if (tx is not null) tx.ValueChanged -= OnReceived;
+        if (device is not null) device.ConnectionStatusChanged -= OnConnectionChanged;
+        if (session is not null)
+        {
+            session.MaxPduSizeChanged -= OnMtuChanged;
+            session.MaintainConnection = false;
+            session.Dispose();
+        }
+        service?.Dispose();
+        device?.Dispose();
+        rx = null;
+        tx = null;
+        session = null;
+        service = null;
+        device = null;
+    }
+
+    public void Dispose()
+    {
+        StopScan();
+        Disconnect();
+    }
+}

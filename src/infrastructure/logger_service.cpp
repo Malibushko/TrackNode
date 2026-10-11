@@ -4,6 +4,13 @@
 #include <cstdio>
 #include <cstring>
 
+void logger_service::set_log_sink(firmware_log_sink *sink)
+{
+	log_sink_.store(sink);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status logger_service::submit_reply(const command_reply &reply)
 {
 	if (reply.text.back() != '\0') return fail(component::service, error_code::invalid_argument);
@@ -109,6 +116,10 @@ status logger_service::write(const char *format, ...)
 		return fail(component::uart, error_code::invalid_argument);
 	}
 	entry.text[sizeof(entry.text) - 1] = '\0';
+	if (auto *sink = log_sink_.load())
+	{
+		sink->submit_log({entry.text, static_cast<std::size_t>(length)});
+	}
 	if (xQueueSend(inbox_, &entry, 0) != pdPASS)
 	{
 		dropped_.fetch_add(1);

@@ -2,6 +2,7 @@
 
 #include "infrastructure/supervisor.h"
 #include "application/command_reply.h"
+#include "application/firmware_log_sink.h"
 #include "drivers/uart.h"
 
 #include <atomic>
@@ -21,6 +22,7 @@ public: // Common lifecycle
 public: // Logger API
 	status write(const char *format, ...);
 	status submit_reply(const command_reply &reply) override;
+	void set_log_sink(firmware_log_sink *sink);
 
 	[[nodiscard]] std::uint32_t dropped_count() const { return dropped_.load(); }
 	[[nodiscard]] std::uint32_t failed_writes() const { return failed_writes_.load(); }
@@ -72,6 +74,7 @@ private: // State
 	TaskHandle_t task_ = nullptr;
 	std::atomic<std::uint32_t> dropped_{ 0 };
 	std::atomic<std::uint32_t> failed_writes_{ 0 };
+	std::atomic<firmware_log_sink *> log_sink_{nullptr};
 	alignas(std::max_align_t) std::array<std::byte, 256> tx_frame_{};
 	bool tx_frame_busy_ = false;
 };

@@ -179,6 +179,57 @@ int main()
 	require(text.find("T,0,25.00,100000.00") != std::string::npos);
 	require(monitor.errors == 2);
 	service.stop();
+	require(logger.sink == nullptr);
+
+	fake_backend log_backend;
+	fake_commands log_commands;
+	bluetooth_service log_service{log_backend, log_commands, logger, monitor};
+	require(log_service.start().has_value());
+	require(logger.sink == &log_service);
+	log_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {true, true, 20, 42}
+	});
+	log_backend.events.push_back(receive("SET LOG_STREAM ON", 42));
+	log_backend.before_finish = [&]
+	{
+		for (unsigned index = 0; index < 10; ++index)
+		{
+			logger.sink->submit_log("test,line\r\n");
+		}
+		require(log_service.submit_reply(command_reply{
+			.session = 42,
+			.text = {'P', 'R', 'I', 'O', 'R', 'I', 'T', 'Y', '\r', '\n'}
+		}).has_value());
+		log_backend.events.push_back(bluetooth_event{
+			.type = bluetooth_event::kind::link_changed,
+			.link = {true, true, 20, 43}
+		});
+		log_backend.events.push_back(receive("SET LOG_STREAM OFF", 43));
+	};
+	try
+	{
+		fake_task(fake_argument);
+	}
+	catch (const finished &)
+	{
+	}
+	text.clear();
+	for (const auto &chunk : log_backend.chunks)
+	{
+		require(chunk.size() <= 20);
+		text += chunk;
+	}
+	require(text.starts_with("OK LOG_STREAM ON\r\nPRIORITY\r\nL,"));
+	require(text.find("[dropped 2 BLE log messages]") != std::string::npos);
+	require(text.find("test,line  \r\n") != std::string::npos);
+	require(text.find("OK LOG_STREAM OFF\r\n") != std::string::npos);
+	require(log_commands.received.empty());
+	const auto first_log = text.find("test,line");
+	const auto second_log = text.find("test,line", first_log + 1);
+	require(second_log != std::string::npos && text.find("test,line", second_log + 1) == std::string::npos);
+	log_service.stop();
+	require(logger.sink == nullptr);
 	fail_task_create = true;
 	require(!service.start());
 	require(!service.submit_reply({}));

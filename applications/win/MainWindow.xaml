@@ -1,0 +1,137 @@
+<Window x:Class="TrackNode.DevTools.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="TrackNode · BLE Workbench" Width="1280" Height="860" MinWidth="1050" MinHeight="740"
+ WindowStartupLocation="CenterScreen" Loaded="WindowLoaded" Closing="WindowClosing"
+ Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource TextBrush}" FontFamily="Segoe UI" FontSize="14">
+ <Grid Margin="28">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <Grid Margin="0,0,0,24">
+   <StackPanel>
+    <StackPanel Orientation="Horizontal">
+     <TextBlock Text="◈" FontSize="30" Foreground="{StaticResource AccentBrush}" Margin="0,0,12,0"/>
+     <TextBlock Text="TrackNode" FontSize="29" FontWeight="SemiBold"/>
+     <Border Background="#253C38" CornerRadius="5" Padding="9,4" Margin="14,7,0,0" VerticalAlignment="Top">
+      <TextBlock Text="BLE WORKBENCH" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+     </Border>
+    </StackPanel>
+    <TextBlock Text="Inspect the device. Follow the data. Understand the failure." Foreground="{StaticResource MutedBrush}" Margin="0,7,0,0"/>
+   </StackPanel>
+   <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+    <TextBlock Text="{Binding ConnectionLabel}" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Right" Foreground="{StaticResource AccentBrush}"/>
+    <TextBlock Text="{Binding LinkDetails}" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right" Margin="0,6,0,0"/>
+   </StackPanel>
+  </Grid>
+  <Grid Grid.Row="1">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="250"/><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <Border Style="{StaticResource Panel}">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <StackPanel>
+      <TextBlock Text="NEARBY DEVICES" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold"/>
+      <TextBlock Text="Find your node" FontSize="21" FontWeight="SemiBold" Margin="0,10,0,16"/>
+      <Button Content="{Binding ScanButtonLabel}" Click="ScanClicked" IsEnabled="{Binding CanScan}" Margin="0,0,0,12"/>
+      <TextBlock Text="{Binding ScanDetails}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,14"/>
+     </StackPanel>
+     <ListBox x:Name="DeviceList" Grid.Row="1" ItemsSource="{Binding Devices}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" SelectionChanged="DeviceSelected">
+      <ListBox.ItemContainerStyle>
+       <Style TargetType="ListBoxItem">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,0,0,8"/>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+         <Border x:Name="DeviceSurface" Background="#222C38" BorderBrush="#354355" BorderThickness="1" CornerRadius="8" Padding="12"><ContentPresenter/></Border>
+         <ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="DeviceSurface" Property="BorderBrush" Value="#67E8C2"/><Setter TargetName="DeviceSurface" Property="Background" Value="#253C38"/></Trigger></ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+       </Style>
+      </ListBox.ItemContainerStyle>
+      <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12" LineHeight="22"/></DataTemplate></ListBox.ItemTemplate>
+     </ListBox>
+     <StackPanel Grid.Row="2" Margin="0,16,0,0">
+      <Button Content="Connect" Click="ConnectClicked" IsEnabled="{Binding CanConnect}" Background="#285448" Margin="0,0,0,8"/>
+      <Button Content="Disconnect" Click="DisconnectClicked" IsEnabled="{Binding CanDisconnect}" Margin="0,0,0,20"/>
+      <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="0,16,0,0">
+       <StackPanel>
+        <TextBlock Text="TRANSPORT" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
+        <TextBlock Text="GATT RX Write / TX Notify" FontSize="12" Margin="0,8,0,0"/>
+        <TextBlock Text="{Binding LogStreamLabel}" FontSize="12" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding ModeLabel}" Foreground="{StaticResource AccentBrush}" FontSize="11" Margin="0,16,0,0"/>
+       </StackPanel>
+      </Border>
+     </StackPanel>
+    </Grid>
+   </Border>
+   <Grid Grid.Column="2">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <UniformGrid Columns="4" Margin="0,0,-10,18">
+     <Border Style="{StaticResource Panel}" Margin="0,0,10,0" Padding="16">
+      <StackPanel><TextBlock Text="TEMPERATURE" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding Temperature}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="BMP280 · °C" FontSize="11" Foreground="{StaticResource MutedBrush}"/></StackPanel>
+     </Border>
+     <Border Style="{StaticResource Panel}" Margin="0,0,10,0" Padding="16">
+      <StackPanel><TextBlock Text="PRESSURE" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding Pressure}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="BMP280 · hPa" FontSize="11" Foreground="{StaticResource MutedBrush}"/></StackPanel>
+     </Border>
+     <Border Style="{StaticResource Panel}" Margin="0,0,10,0" Padding="16">
+      <StackPanel><TextBlock Text="MCU SUPPLY" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding Voltage}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="VREFINT · V, not battery %" FontSize="10" Foreground="{StaticResource MutedBrush}"/></StackPanel>
+     </Border>
+     <Border Style="{StaticResource Panel}" Margin="0,0,10,0" Padding="16">
+      <StackPanel><TextBlock Text="GNSS" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding GnssStatus}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="{Binding GnssDetails}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/></StackPanel>
+     </Border>
+    </UniformGrid>
+    <Border Grid.Row="1" Style="{StaticResource Panel}" Margin="0,0,0,18" Padding="18,14">
+     <StackPanel>
+      <DockPanel Margin="0,0,0,12"><TextBlock Text="DEVICE CONTROL" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding SampleAge}" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" FontSize="11"/></DockPanel>
+      <WrapPanel IsEnabled="{Binding CanOperate}">
+       <Button Content="Ping" Tag="PING" Click="QuickCommand"/>
+       <Button Content="Temperature" Tag="GET TEMP" Click="QuickCommand"/>
+       <Button Content="Pressure" Tag="GET PRESSURE" Click="QuickCommand"/>
+       <Button Content="Supply" Tag="GET VOLTAGE" Click="QuickCommand"/>
+       <Button Content="GNSS" Tag="GET GNSS" Click="QuickCommand"/>
+       <Button Content="Low power" Tag="SET POWER_MODE LOW" Click="QuickCommand"/>
+       <Button Content="High power" Tag="SET POWER_MODE HIGH" Click="QuickCommand"/>
+      </WrapPanel>
+      <WrapPanel IsEnabled="{Binding CanOperate}" Margin="0,3,0,0">
+       <TextBlock Text="Sample period" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="0,0,12,8"/>
+       <TextBox x:Name="PeriodInput" Text="1000" Width="85" Margin="0,0,8,8"/>
+       <TextBlock Text="ms" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="0,0,12,8"/>
+       <Button Content="Apply" Click="ApplyPeriod"/>
+       <Button Content="Logs on" Tag="SET LOG_STREAM ON" Click="QuickCommand"/>
+       <Button Content="Logs off" Tag="SET LOG_STREAM OFF" Click="QuickCommand"/>
+      </WrapPanel>
+     </StackPanel>
+    </Border>
+    <Border Grid.Row="2" Style="{StaticResource Panel}" Padding="0">
+     <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <DockPanel Margin="18,16">
+       <TextBlock Text="EVENT JOURNAL" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <CheckBox Content="Telemetry" IsChecked="{Binding ShowTelemetry}" Checked="FilterChanged" Unchecked="FilterChanged"/>
+        <CheckBox Content="Firmware" IsChecked="{Binding ShowFirmware}" Checked="FilterChanged" Unchecked="FilterChanged"/>
+        <CheckBox x:Name="FollowLog" Content="Follow" IsChecked="True"/>
+        <Button Content="Clear" Click="ClearLog" Padding="9,5" Margin="0,0,8,0"/>
+        <Button Content="Export" Click="ExportLog" Padding="9,5" Margin="0"/>
+       </StackPanel>
+      </DockPanel>
+      <ListView x:Name="JournalList" Grid.Row="1" ItemsSource="{Binding JournalView}" Background="#121920" BorderThickness="0" Foreground="{StaticResource TextBrush}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+       <ListView.ItemContainerStyle><Style TargetType="ListViewItem">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="12,5"/>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListViewItem"><Border Background="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border></ControlTemplate></Setter.Value></Setter>
+       </Style></ListView.ItemContainerStyle>
+       <ListView.ItemTemplate><DataTemplate>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="96"/><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+         <TextBlock Text="{Binding Time}" FontFamily="Consolas" FontSize="12" Foreground="#728398"/>
+         <TextBlock Grid.Column="1" Text="{Binding Kind}" FontFamily="Consolas" FontSize="12" Foreground="{Binding Color}"/>
+         <TextBlock Grid.Column="2" Text="{Binding Text}" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap"/>
+        </Grid>
+       </DataTemplate></ListView.ItemTemplate>
+      </ListView>
+      <Grid Grid.Row="2" Margin="16">
+       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <TextBox x:Name="CommandInput" Text="PING" FontFamily="Consolas" KeyDown="CommandKeyDown" IsEnabled="{Binding CanOperate}" ToolTip="One ASCII command · Enter to send · ↑/↓ history"/>
+       <Button Grid.Column="1" Content="Send ↵" Click="SendClicked" IsEnabled="{Binding CanOperate}" Background="#285448" Margin="10,0,0,0"/>
+      </Grid>
+     </Grid>
+    </Border>
+   </Grid>
+  </Grid>
+  <TextBlock Grid.Row="2" Text="{Binding Footer}" Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,16,0,0"/>
+ </Grid>
+</Window>

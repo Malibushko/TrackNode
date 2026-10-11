@@ -5,6 +5,7 @@
 #include "application/log_record.h"
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
 #include <type_traits>
 
 namespace
@@ -19,14 +20,15 @@ static_assert(std::is_trivially_copyable_v<telemetry_sample>);
 
 status bluetooth_service::start()
 {
-	if (task_ || replies_ || samples_)
+	if (task_ || replies_ || samples_ || logs_)
 	{
 		return fail(component::rtos, error_code::already_initialized);
 	}
 
 	replies_ = xQueueCreate(reply_queue_capacity, sizeof(command_reply));
 	samples_ = xQueueCreate(1, sizeof(telemetry_sample));
-	if (!replies_ || !samples_)
+	logs_ = xQueueCreate(8, sizeof(log_message));
+	if (!replies_ || !samples_ || !logs_)
 	{
 		stop();
 		return fail(component::rtos, error_code::out_of_memory);
@@ -40,6 +42,7 @@ status bluetooth_service::start()
 	}
 
 	task_ = *created;
+	logger_.set_log_sink(this);
 	monitor_.set_health(service_id::bluetooth, service_health::starting);
 	return {};
 }
@@ -48,6 +51,8 @@ status bluetooth_service::start()
 
 void bluetooth_service::stop()
 {
+	logger_.set_log_sink(nullptr);
+	log_session_.store(0);
 	if (task_)
 	{
 		vTaskDelete(task_);
@@ -62,6 +67,11 @@ void bluetooth_service::stop()
 	{
 		vQueueDelete(samples_);
 		samples_ = nullptr;
+	}
+	if (logs_)
+	{
+		vQueueDelete(logs_);
+		logs_ = nullptr;
 	}
 
 	backend_.stop();
@@ -105,6 +115,44 @@ status bluetooth_service::submit_reply(const command_reply &reply)
 
 void bluetooth_service::set_power_mode(power_mode)
 {
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void bluetooth_service::submit_log(std::string_view text)
+{
+	const auto session = log_session_.load();
+	if (session == 0 || !logs_)
+	{
+		return;
+	}
+
+	log_message message{
+		.session = session,
+		.timestamp_ms = pdTICKS_TO_MS(xTaskGetTickCount()),
+		.text = {}
+	};
+	std::size_t index = 0;
+	for (const char value : text)
+	{
+		if (index == message.text.size() - 1)
+		{
+			break;
+		}
+		message.text[index++] = value == '\r' || value == '\n' ? ' ' : value;
+	}
+	if (xQueueSend(logs_, &message, 0) != pdPASS)
+	{
+		dropped_logs_.fetch_add(1);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void bluetooth_service::reset_log_stream()
+{
+	log_session_.store(0);
+	dropped_logs_.store(0);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -169,6 +217,10 @@ status bluetooth_service::handle_event(const bluetooth_event &event)
 
 status bluetooth_service::handle_link_changed(const bluetooth_link &link)
 {
+	if (link.session != link_.session || !link.connected || !link.subscribed)
+	{
+		reset_log_stream();
+	}
 	link_ = link;
 	advertise_pending_ = !link_.connected;
 	return {};
@@ -213,6 +265,10 @@ status bluetooth_service::handle_received(const bluetooth_event &event)
 
 status bluetooth_service::handle_command(std::string_view text, std::uint32_t session)
 {
+	if (text == "SET LOG_STREAM ON" || text == "SET LOG_STREAM OFF")
+	{
+		return handle_log_stream(text == "SET LOG_STREAM ON", session);
+	}
 	const auto parsed = parse_command(text);
 	if (!parsed)
 	{
@@ -235,6 +291,23 @@ status bluetooth_service::handle_command(std::string_view text, std::uint32_t se
 
 //////////////////////////////////////////////////////////////////////////
 
+status bluetooth_service::handle_log_stream(bool enabled, std::uint32_t session)
+{
+	reset_log_stream();
+	log_message discarded{};
+	while (xQueueReceive(logs_, &discarded, 0) == pdPASS)
+	{
+	}
+	if (enabled && link_.subscribed)
+	{
+		log_session_.store(session);
+		(void)logger_.write("BLE firmware log stream enabled\r\n");
+	}
+	return send_error(enabled ? "OK LOG_STREAM ON\r\n" : "OK LOG_STREAM OFF\r\n", session);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status bluetooth_service::send_parse_error(command_parse_error code, std::uint32_t session)
 {
 	switch (code)
@@ -252,7 +325,9 @@ status bluetooth_service::send_parse_error(command_parse_error code, std::uint32
 
 status bluetooth_service::process_output()
 {
-	return process_replies().and_then([&]{ return process_sample(); });
+	return process_replies()
+		.and_then([&]{ return process_sample(); })
+		.and_then([&]{ return process_logs(); });
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -321,8 +396,63 @@ void bluetooth_service::task_entry(void *argument)
 
 //////////////////////////////////////////////////////////////////////////
 
+status bluetooth_service::send_log_line(std::uint32_t timestamp_ms, const char *text, std::uint32_t session)
+{
+	std::array<char, 128> line{};
+	const int length = std::snprintf(line.data(), line.size(), "L,%lu,%s\r\n",
+		static_cast<unsigned long>(timestamp_ms), text);
+	if (length < 0 || static_cast<std::size_t>(length) >= line.size())
+	{
+		return fail(component::service, error_code::invalid_argument);
+	}
+	return send_text({line.data(), static_cast<std::size_t>(length)}, session);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status bluetooth_service::process_logs()
+{
+	const auto session = log_session_.load();
+	log_message message{};
+	if (session == 0)
+	{
+		while (xQueueReceive(logs_, &message, 0) == pdPASS)
+		{
+		}
+		return {};
+	}
+
+	const auto dropped = dropped_logs_.exchange(0);
+	if (dropped != 0)
+	{
+		std::array<char, 64> text{};
+		std::snprintf(text.data(), text.size(), "[dropped %lu BLE log messages]", static_cast<unsigned long>(dropped));
+		if (auto sent = send_log_line(pdTICKS_TO_MS(xTaskGetTickCount()), text.data(), session); !sent)
+		{
+			dropped_logs_.fetch_add(dropped);
+			return sent;
+		}
+	}
+	for (std::size_t index = 0; index < 2 && xQueueReceive(logs_, &message, 0) == pdPASS; ++index)
+	{
+		if (message.session != session)
+		{
+			continue;
+		}
+		if (auto sent = send_log_line(message.timestamp_ms, message.text.data(), session); !sent)
+		{
+			dropped_logs_.fetch_add(1);
+			return sent;
+		}
+	}
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 bool bluetooth_service::initialize_backend()
 {
+	reset_log_stream();
 	link_ = {};
 	advertise_pending_ = false;
 	const auto initialized = backend_.init();
