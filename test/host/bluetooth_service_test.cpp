@@ -1,6 +1,7 @@
 #include "infrastructure/bluetooth_service.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/supervisor.h"
+#include "infrastructure/bluetooth_telemetry.h"
 #include <deque>
 #include <functional>
 #include <iostream>
@@ -21,6 +22,12 @@ public:
 	std::deque<bluetooth_event> events;
 	std::vector<std::string> chunks;
 	std::vector<std::uint32_t> sessions;
+	std::vector<std::vector<std::uint8_t>> measurements;
+	status publish_measurement(std::span<const std::uint8_t> data) override
+	{
+		measurements.emplace_back(data.begin(), data.end());
+		return {};
+	}
 	std::function<void()> before_finish;
 	std::function<void(const bluetooth_event &)> before_event;
 	unsigned initialized = 0;
@@ -198,6 +205,57 @@ int main()
 	require(monitor.errors == 2);
 	service.stop();
 	require(logger.sink == nullptr);
+
+	fake_backend cache_backend;
+	fake_commands cache_commands;
+	bluetooth_service cache_service{cache_backend, cache_commands, logger, monitor};
+	require(cache_service.start().has_value());
+	telemetry_sample cached{
+		.sensor = {
+			.sequence = 42,
+			.temperature_c = -1.25f,
+			.pressure_pa = 100000,
+			.valid = true
+		}
+	};
+	require(cache_service.submit(cached).has_value());
+	cache_backend.events.push_back(bluetooth_event{});
+	cache_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {true, false, 20, 301}
+	});
+	cache_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {false, false, 20, 301}
+	});
+	cache_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {true, false, 20, 302}
+	});
+	cache_backend.before_finish = [&]
+	{
+		cache_backend.restart_poll = true;
+		cache_backend.events.push_back(bluetooth_event{});
+	};
+	try
+	{
+		fake_task(fake_argument);
+	}
+	catch (const finished &)
+	{
+	}
+	require(cache_backend.measurements.size() == 4 && cache_backend.chunks.empty());
+	require(cache_backend.initialized == 2);
+	for (const auto &bytes : cache_backend.measurements)
+	{
+		const auto value = bluetooth_measurement::decode(bytes);
+		require(value && value->sensor_sequence == 42 && value->temperature == -125 && value->pressure == 1000000);
+	}
+	cached.sensor.temperature_c = std::numeric_limits<float>::quiet_NaN();
+	require(!(make_bluetooth_measurement(cached, 100, 600000).flags & bluetooth_measurement::sensor_valid));
+	cached.sensor.temperature_c = 400;
+	require(!(make_bluetooth_measurement(cached, 100, 600000).flags & bluetooth_measurement::sensor_valid));
+	cache_service.stop();
 
 	fake_backend log_backend;
 	fake_commands log_commands;
@@ -406,7 +464,7 @@ int main()
 	require(text.find("HEALTH logger degraded component=", logger_fault + 1) != std::string::npos);
 	diagnostic_service.stop();
 
-	for (unsigned field = 0; field < 13; ++field)
+	for (unsigned field = 0; field < 14; ++field)
 	{
 		bluetooth_config invalid;
 		switch (field)
@@ -424,6 +482,7 @@ int main()
 			case 10: invalid.task_stack_depth = 0; break;
 			case 11: invalid.task_priority = configMAX_PRIORITIES; break;
 			case 12: invalid.reply_queue_capacity = static_cast<std::size_t>(UINT32_MAX) + 1; break;
+			case 13: invalid.measurement_lifetime_ms = 0; break;
 		}
 		bluetooth_service invalid_service{backend, commands, logger, monitor, invalid};
 		const auto result = invalid_service.start();

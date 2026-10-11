@@ -11,7 +11,7 @@ add_executable(zephyr_bluetooth_init_test zephyr_bluetooth_init_test.cpp
     ../src/drivers/devices/zephyr_bluetooth.cpp
     ../src/drivers/devices/zephyr_gatt_server.cpp)
 target_compile_features(zephyr_bluetooth_init_test PRIVATE cxx_std_20)
-target_include_directories(zephyr_bluetooth_init_test PRIVATE fake ../include ../../../lib/expected/include)
+target_include_directories(zephyr_bluetooth_init_test PRIVATE fake ../include ../../../include ../../../lib/expected/include)
 target_compile_options(zephyr_bluetooth_init_test PRIVATE -Wall -Wextra -Wno-unused-parameter)
 add_test(NAME zephyr_bluetooth_init_test COMMAND zephyr_bluetooth_init_test)
 
@@ -30,6 +30,14 @@ add_executable(zephyr_gatt_test zephyr_gatt_test.cpp
 find_package(Threads REQUIRED)
 target_link_libraries(zephyr_gatt_test PRIVATE Threads::Threads)
 target_compile_features(zephyr_gatt_test PRIVATE cxx_std_20)
-target_include_directories(zephyr_gatt_test PRIVATE fake ../include ../../../lib/expected/include)
+target_include_directories(zephyr_gatt_test PRIVATE fake ../include ../../../include ../../../lib/expected/include)
 target_compile_options(zephyr_gatt_test PRIVATE -Wall -Wextra -Werror)
 add_test(NAME zephyr_gatt_test COMMAND zephyr_gatt_test)
+
+add_executable(measurement_test measurement_test.cpp
+    ../src/drivers/devices/zephyr_bluetooth.cpp
+    ../src/drivers/devices/zephyr_gatt_server.cpp)
+target_compile_features(measurement_test PRIVATE cxx_std_20)
+target_include_directories(measurement_test PRIVATE fake ../include ../../../include ../../../lib/expected/include)
+target_compile_options(measurement_test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME measurement_test COMMAND measurement_test)

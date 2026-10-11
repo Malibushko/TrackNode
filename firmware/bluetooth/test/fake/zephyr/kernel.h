@@ -8,6 +8,10 @@
 using k_timeout_t = std::int64_t;
 using k_timepoint_t = std::int64_t;
 inline std::int64_t simulated_time = 0;
+inline std::int64_t k_uptime_get()
+{
+	return simulated_time;
+}
 inline std::function<void()> pump;
 inline constexpr k_timeout_t K_MSEC(std::uint32_t ms)
 {

@@ -3,6 +3,7 @@
 #include "infrastructure/logger_service.h"
 #include "infrastructure/supervisor.h"
 #include "application/log_record.h"
+#include "infrastructure/bluetooth_telemetry.h"
 #include <algorithm>
 #include <cstring>
 #include <cstdio>
@@ -12,7 +13,7 @@ static_assert(std::is_trivially_copyable_v<telemetry_sample>);
 
 status bluetooth_service::validate_config() const
 {
-	if (config_.poll_timeout_ms == 0 || pdMS_TO_TICKS(config_.reconnect_interval_ms) == 0 ||
+	if (config_.poll_timeout_ms == 0 || config_.measurement_lifetime_ms == 0 || pdMS_TO_TICKS(config_.reconnect_interval_ms) == 0 ||
 		config_.command_capacity == 0 || config_.command_capacity > bluetooth_event{}.payload.size() ||
 		config_.reply_queue_capacity == 0 || config_.log_queue_capacity == 0 ||
 		config_.reply_queue_capacity > UINT32_MAX || config_.log_queue_capacity > UINT32_MAX ||
@@ -88,6 +89,8 @@ void bluetooth_service::stop()
 	}
 
 	backend_.stop();
+	latest_sample_.reset();
+	measurement_pending_ = false;
 	link_ = {};
 	advertise_pending_ = false;
 }
@@ -100,11 +103,6 @@ status bluetooth_service::submit(const telemetry_sample &sample)
 	{
 		return fail(component::service, error_code::not_initialized);
 	}
-	if (!sample.sensor.valid)
-	{
-		return fail(component::service, error_code::invalid_argument);
-	}
-
 	return from_freertos(xQueueOverwrite(samples_, &sample));
 }
 
@@ -175,7 +173,6 @@ void bluetooth_service::reset_exchange()
 {
 	reset_log_stream();
 	xQueueReset(replies_);
-	xQueueReset(samples_);
 	xQueueReset(logs_);
 }
 
@@ -241,6 +238,10 @@ status bluetooth_service::handle_event(const bluetooth_event &event)
 
 status bluetooth_service::handle_link_changed(const bluetooth_link &link)
 {
+	if (link.session != link_.session)
+	{
+		measurement_pending_ = latest_sample_.has_value();
+	}
 	if (link.session != link_.session || !link.connected || !link.subscribed)
 	{
 		reset_exchange();
@@ -394,7 +395,23 @@ status bluetooth_service::process_replies()
 status bluetooth_service::process_sample()
 {
 	telemetry_sample sample{};
-	if (xQueueReceive(samples_, &sample, 0) != pdPASS || !link_.connected || !link_.subscribed)
+	const bool received = xQueueReceive(samples_, &sample, 0) == pdPASS;
+	if (received)
+	{
+		latest_sample_ = sample;
+		measurement_pending_ = true;
+	}
+	if (measurement_pending_ && latest_sample_)
+	{
+		const auto value = format_bluetooth_measurement(*latest_sample_, xTaskGetTickCount(), config_.measurement_lifetime_ms);
+		const auto bytes = bluetooth_measurement::encode(value);
+		if (const auto sent = backend_.publish_measurement(bytes); !sent)
+		{
+			return sent;
+		}
+		measurement_pending_ = false;
+	}
+	if (!received || !sample.sensor.valid || !link_.connected || !link_.subscribed)
 	{
 		return {};
 	}
@@ -510,6 +527,7 @@ status bluetooth_service::process_logs()
 
 bool bluetooth_service::initialize_backend()
 {
+	measurement_pending_ = latest_sample_.has_value();
 	reset_exchange();
 	link_ = {};
 	advertise_pending_ = false;

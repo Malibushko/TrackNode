@@ -20,6 +20,8 @@ public sealed class BleTransport : IDisposable
     private BluetoothLEAdvertisementWatcher? watcher;
     private BluetoothLEDevice? device;
     private GattDeviceService? service;
+    private GattDeviceService? environmentalService;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<GattCharacteristic, int> measurements = new();
     private GattSession? session;
     private GattCharacteristic? rx;
     private GattCharacteristic? tx;
@@ -32,6 +34,7 @@ public sealed class BleTransport : IDisposable
     public event Action<NearbyDevice>? Discovered;
     public event Action<string>? ScanStopped;
     public event Action<byte[], int>? Received;
+    public event Action<Guid, byte[], int>? MeasurementReceived;
     public event Action<string, int>? LinkChanged;
 
     public void StartScan()
@@ -63,6 +66,7 @@ public sealed class BleTransport : IDisposable
     public async Task ConnectAsync(ulong address)
     {
         Disconnect();
+        var connecting = Generation;
         try
         {
             device = await BluetoothLEDevice.FromBluetoothAddressAsync(address);
@@ -88,7 +92,38 @@ public sealed class BleTransport : IDisposable
             session.MaxPduSizeChanged += OnMtuChanged;
             var subscribed = await tx.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
             if (subscribed != GattCommunicationStatus.Success) throw new IOException($"Subscribe failed: {subscribed}");
-            if (device.ConnectionStatus != BluetoothConnectionStatus.Connected) throw new IOException("Device disconnected during subscription.");
+            var environmental = await device.GetGattServicesForUuidAsync(Measurements.ServiceUuid, BluetoothCacheMode.Uncached);
+            if (environmental.Status != GattCommunicationStatus.Success || environmental.Services.Count == 0)
+                throw new IOException("Environmental Sensing service is missing. Update both firmware images.");
+            environmentalService = environmental.Services[0];
+            foreach (var unused in environmental.Services.Skip(1)) unused.Dispose();
+            var sensorCharacteristics = await environmentalService.GetCharacteristicsAsync(BluetoothCacheMode.Uncached);
+            if (sensorCharacteristics.Status != GattCommunicationStatus.Success)
+                throw new IOException($"Sensor discovery: {sensorCharacteristics.Status}");
+            var all = characteristics.Characteristics.Concat(sensorCharacteristics.Characteristics).ToList();
+            foreach (var uuid in new[] { Measurements.StatusUuid, Measurements.TemperatureUuid, Measurements.PressureUuid, Measurements.GnssUuid })
+            {
+                var characteristic = all.SingleOrDefault(c => c.Uuid == uuid);
+                if (characteristic is null || !characteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Read) ||
+                    !characteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
+                    throw new IOException($"Required Read / Notify characteristic {uuid} is missing.");
+                measurements.TryAdd(characteristic, connecting);
+                characteristic.ValueChanged += OnMeasurement;
+                var result = await characteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+                if (result != GattCommunicationStatus.Success) throw new IOException($"Measurement subscription: {result}");
+            }
+            foreach (var characteristic in measurements.Keys)
+            {
+                var result = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
+                if (connecting != Generation) throw new IOException("Connection changed during measurement discovery.");
+                if (result.Status == GattCommunicationStatus.Success)
+                    MeasurementReceived?.Invoke(characteristic.Uuid, ReadBytes(result.Value), connecting);
+                else if (!(result.Status == GattCommunicationStatus.ProtocolError && result.ProtocolError == 0x0e &&
+                    (characteristic.Uuid == Measurements.TemperatureUuid || characteristic.Uuid == Measurements.PressureUuid)))
+                    throw new IOException($"Measurement read: {result.Status}, ATT error {result.ProtocolError}");
+            }
+            if (connecting != Generation || device is null || device.ConnectionStatus != BluetoothConnectionStatus.Connected)
+                throw new IOException("Device disconnected during subscription.");
             ready = true;
             LinkChanged?.Invoke($"Subscribed · MTU {session.MaxPduSize} · payload {MaxPayload} B", generation);
         }
@@ -122,6 +157,20 @@ public sealed class BleTransport : IDisposable
         Received?.Invoke(bytes, current);
     }
 
+    private static byte[] ReadBytes(IBuffer buffer)
+    {
+        using var reader = DataReader.FromBuffer(buffer);
+        var bytes = new byte[reader.UnconsumedBufferLength];
+        reader.ReadBytes(bytes);
+        return bytes;
+    }
+
+    private void OnMeasurement(GattCharacteristic sender, GattValueChangedEventArgs args)
+    {
+        if (measurements.TryGetValue(sender, out var current) && current == Generation)
+            MeasurementReceived?.Invoke(sender.Uuid, ReadBytes(args.CharacteristicValue), current);
+    }
+
     private void OnConnectionChanged(BluetoothLEDevice sender, object args)
     {
         var current = Generation;
@@ -143,6 +192,8 @@ public sealed class BleTransport : IDisposable
         ready = false;
         Interlocked.Increment(ref generation);
         if (tx is not null) tx.ValueChanged -= OnReceived;
+        foreach (var characteristic in measurements.Keys) characteristic.ValueChanged -= OnMeasurement;
+        measurements.Clear();
         if (device is not null) device.ConnectionStatusChanged -= OnConnectionChanged;
         if (session is not null)
         {
@@ -151,11 +202,13 @@ public sealed class BleTransport : IDisposable
             session.Dispose();
         }
         service?.Dispose();
+        environmentalService?.Dispose();
         device?.Dispose();
         rx = null;
         tx = null;
         session = null;
         service = null;
+        environmentalService = null;
         device = null;
     }
 

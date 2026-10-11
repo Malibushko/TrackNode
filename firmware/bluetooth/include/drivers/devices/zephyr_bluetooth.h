@@ -25,6 +25,8 @@ public:
 	void stop() override;
 	status send(data_view data, session_t session) override;
 	void set_receive_session(session_t session) override;
+	status update_measurement(const bluetooth_measurement::snapshot &value) override;
+	void reset_measurement() override;
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override;
 
 	status start_advertise() override;

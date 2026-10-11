@@ -47,6 +47,7 @@ private:
 	status handle_received(const bluetooth_event &event);
 	status handle_hello(const ble_bridge::frame &frame);
 	status handle_send(const ble_bridge::frame &frame);
+	status handle_measurement(const ble_bridge::frame &frame);
 	status handle_advertise(const ble_bridge::frame &frame);
 	status handle_stop_advertise(const ble_bridge::frame &frame);
 	static ble_bridge::ack_code status_to_ack(const status &outcome);

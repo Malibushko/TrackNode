@@ -134,6 +134,17 @@ int main()
 	require(backend.start_advertise().has_value());
 	require(last_send.type == ble_bridge::frame_type::advertise && last_send.session == session);
 	require(backend.stop_advertise().has_value());
+	auto disconnected = link;
+	transport.chunk_size = ble_bridge::wire_frame_capacity;
+	disconnected.payload = {0, 0, 20, 0};
+	push(disconnected);
+	require(!backend.poll(0)->link.connected);
+	std::array<std::uint8_t, 46> measurement{};
+	measurement[0] = 1;
+	require(backend.publish_measurement(measurement).has_value());
+	require(last_send.type == ble_bridge::frame_type::measurement && last_send.session == session && last_send.size == 46);
+	push(link);
+	require(backend.poll(0)->link.connected);
 	transport.chunk_size = ble_bridge::wire_frame_capacity;
 	push(ble_bridge::frame{});
 	require(backend.poll(0).error().code == error_code::not_ready);

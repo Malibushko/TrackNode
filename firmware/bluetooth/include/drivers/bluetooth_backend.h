@@ -3,6 +3,7 @@
 #include "common/buffer.h"
 #include "core/result.h"
 #include "common/bluetooth_types.h"
+#include "drivers/protocols/bluetooth_measurement.h"
 
 namespace ble
 {
@@ -18,6 +19,8 @@ public:
 
 	virtual status send(data_view data, session_t session) = 0;
 	virtual void set_receive_session(session_t session) = 0;
+	virtual status update_measurement(const bluetooth_measurement::snapshot &value) = 0;
+	virtual void reset_measurement() = 0;
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
 };
 }

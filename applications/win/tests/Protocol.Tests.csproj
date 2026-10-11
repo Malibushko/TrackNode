@@ -5,5 +5,8 @@
   <Nullable>enable</Nullable>
   <ImplicitUsings>enable</ImplicitUsings>
  </PropertyGroup>
- <ItemGroup><Compile Include="../Protocol.cs" Link="Protocol.cs"/></ItemGroup>
+ <ItemGroup>
+  <Compile Include="../Protocol.cs" Link="Protocol.cs"/>
+  <Compile Include="../Measurements.cs" Link="Measurements.cs"/>
+ </ItemGroup>
 </Project>

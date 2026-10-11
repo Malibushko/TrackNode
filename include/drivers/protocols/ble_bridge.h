@@ -31,6 +31,7 @@ enum class frame_type : std::uint8_t
 {
 	hello = 1,
 	send = 2,
+	measurement = 3,
 	ready = 0x81,
 	link = 0x82,
 	received = 0x83,

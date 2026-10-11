@@ -68,6 +68,8 @@ private:
 	TaskHandle_t task_ = nullptr;
 
 	bluetooth_link link_{};
+	std::optional<telemetry_sample> latest_sample_;
+	bool measurement_pending_ = false;
 	std::uint32_t request_id_ = 0;
 	bool advertise_pending_ = false;
 	struct log_message

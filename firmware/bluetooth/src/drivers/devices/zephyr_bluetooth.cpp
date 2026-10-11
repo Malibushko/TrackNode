@@ -188,6 +188,20 @@ void zephyr_bluetooth::set_receive_session(session_t session)
 
 //////////////////////////////////////////////////////////////////////////
 
+status zephyr_bluetooth::update_measurement(const bluetooth_measurement::snapshot &value)
+{
+	return gatt_.update_measurement(value);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_bluetooth::reset_measurement()
+{
+	gatt_.reset_measurement();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 result<bluetooth_event> zephyr_bluetooth::poll(std::uint32_t timeout_ms)
 {
 	if (const auto state = check_state(); !state)
@@ -196,6 +210,12 @@ result<bluetooth_event> zephyr_bluetooth::poll(std::uint32_t timeout_ms)
 	}
 
 	auto event = receive_event(timeout_ms);
+	connection_ref connection;
+	{
+		spin_lock_guard guard{callback_lock};
+		connection = retain_connection(active_connection_.get());
+	}
+	gatt_.notify_measurements(connection.get());
 	if (const auto state = check_state(); !state)
 	{
 		return tl::unexpected(state.error());

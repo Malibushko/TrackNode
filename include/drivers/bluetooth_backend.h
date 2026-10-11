@@ -35,5 +35,6 @@ public:
 	virtual status start_advertise() = 0;
 	virtual status stop_advertise() = 0;
 	virtual status send(std::span<const std::uint8_t> payload, std::uint32_t session) = 0;
+	virtual status publish_measurement(std::span<const std::uint8_t> payload) = 0;
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
 };

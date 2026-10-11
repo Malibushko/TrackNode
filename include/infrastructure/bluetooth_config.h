@@ -12,6 +12,7 @@ struct bluetooth_config
 
 	std::uint32_t poll_timeout_ms = 20;
 	std::uint32_t reconnect_interval_ms = 1000;
+	std::uint32_t measurement_lifetime_ms = 120000;
 	std::size_t command_capacity = 64;
 	std::size_t reply_queue_capacity = 4;
 	std::size_t log_queue_capacity = 8;

@@ -46,4 +46,34 @@ foreach (var command in new[] { "SET SAMPLE_PERIOD 60000", "PING\nPING", "", "П
     try { CommandEncoding.Encode(command, 20); Check(false); }
     catch (ArgumentException) { Check(true); }
 }
-Console.WriteLine($"{checks} protocol checks passed: fragmentation, expiry, bounds, absent GNSS, multi-line replies, MTU and ASCII validation.");
+Check(Measurements.Temperature(new byte[] { 0x83, 0xff }) == -1.25);
+Check(Measurements.Pressure(new byte[] { 0x40, 0x42, 0x0f, 0 }) == 1000);
+var statusBytes = new byte[18];
+statusBytes[0] = 1;
+statusBytes[1] = 1;
+System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(statusBytes.AsSpan(2), 42);
+System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(statusBytes.AsSpan(10), ulong.MaxValue);
+var status = MeasurementStatus.Decode(statusBytes);
+Check(status.SensorValid && status.Sequence == 42 && status.GnssSequence == ulong.MaxValue);
+var gnssBytes = new byte[20];
+gnssBytes[0] = 1;
+gnssBytes[1] = 38;
+System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(gnssBytes.AsSpan(2), -900000000);
+System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(gnssBytes.AsSpan(6), 1800000000);
+var gnss = GnssMeasurement.Decode(gnssBytes);
+Check(gnss.Fresh && gnss.Present && gnss.PositionValid && gnss.Latitude == -90 && gnss.Longitude == 180);
+gnssBytes[1] = 2;
+Check(!GnssMeasurement.Decode(gnssBytes).PositionValid);
+gnssBytes[1] = 0;
+Check(!GnssMeasurement.Decode(gnssBytes).Present);
+foreach (var invalid in new[] { new byte[17], new byte[19], Enumerable.Repeat((byte)255, 18).ToArray() })
+{
+    try { MeasurementStatus.Decode(invalid); Check(false); }
+    catch (InvalidDataException) { Check(true); }
+}
+try { Measurements.Temperature(new byte[] { 0, 0x80 }); Check(false); }
+catch (InvalidDataException) { Check(true); }
+gnssBytes[1] = 4;
+try { GnssMeasurement.Decode(gnssBytes); Check(false); }
+catch (InvalidDataException) { Check(true); }
+Console.WriteLine($"{checks} protocol checks passed: text framing, replies, typed values, schema, bounds and absent GNSS.");

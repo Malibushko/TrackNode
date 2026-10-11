@@ -38,6 +38,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private ReplyTracker? replyTracker;
     private TaskCompletionSource<IReadOnlyList<string>>? pendingReply;
     private int demoTick;
+    private double? typedTemperature;
+    private double? typedPressure;
+    private MeasurementStatus? measurementStatus;
+    private DateTimeOffset statusReceived;
     public ObservableCollection<NearbyDevice> Devices { get; } = [];
     public ObservableCollection<JournalEntry> Journal { get; } = [];
     public ICollectionView JournalView { get; }
@@ -52,7 +56,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string Voltage { get; private set; } = "—";
     public string GnssStatus { get; private set; } = "—";
     public string GnssDetails { get; private set; } = "Awaiting data";
-    public string SampleAge => lastSample == default ? "No telemetry received" :
+    public string SampleAge => !demo && measurementStatus is not null ?
+        $"Sample {measurementStatus.Sequence} · age {(measurementStatus.AgeMs / 1000.0 + Math.Max(0, (DateTimeOffset.UtcNow - statusReceived).TotalSeconds)):F1} s" +
+        (!measurementStatus.SensorValid ? " · unavailable/stale" : "") + (!Connected ? " · disconnected" : "") :
+        lastSample == default ? "No telemetry received" :
         $"Telemetry {Math.Max(0, (int)(DateTimeOffset.UtcNow - lastSample).TotalSeconds)} s ago" + (!Connected ? " · disconnected" : "");
     public string Footer { get; private set; } = "Commands are never retried automatically. Journal retains the latest 2,000 events. ↑/↓ recalls commands.";
     public bool ShowTelemetry { get; set; }
@@ -118,6 +125,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             LinkDetails = details;
             Refresh();
         });
+        transport.MeasurementReceived += (uuid, bytes, generation) => OnUi(() =>
+        {
+            if (generation != transport.Generation) return;
+            try { ReceiveMeasurement(uuid, bytes); }
+            catch (InvalidDataException error)
+            {
+                Add("ERROR", error.Message);
+                Disconnect();
+            }
+        });
         timer.Tick += TimerTick;
     }
 
@@ -166,7 +183,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (line.StartsWith("T,", StringComparison.Ordinal))
         {
             Add("TLM", line);
-            if (Sample.TryParse(line, out var sample))
+            if (Sample.TryParse(line, out var sample) && demo)
             {
                 Temperature = sample!.Temperature.ToString("F2", CultureInfo.InvariantCulture);
                 Pressure = (sample.Pressure / 100).ToString("F1", CultureInfo.InvariantCulture);
@@ -176,7 +193,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     : sample.GnssSequence is null ? "No GNSS snapshot" : $"seq {sample.GnssSequence} · age {sample.GnssAgeMs / 1000} s";
                 lastSample = DateTimeOffset.UtcNow;
             }
-            else Add("ERROR", "Malformed telemetry: " + line);
+            else if (!Sample.TryParse(line, out _)) Add("ERROR", "Malformed telemetry: " + line);
         }
         else if (line.StartsWith("L,", StringComparison.Ordinal))
         {
@@ -193,9 +210,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Refresh();
     }
 
+    private void ReceiveMeasurement(Guid uuid, byte[] bytes)
+    {
+        if (uuid == Measurements.TemperatureUuid) typedTemperature = Measurements.Temperature(bytes);
+        else if (uuid == Measurements.PressureUuid) typedPressure = Measurements.Pressure(bytes);
+        else if (uuid == Measurements.StatusUuid)
+        {
+            measurementStatus = MeasurementStatus.Decode(bytes);
+            statusReceived = DateTimeOffset.UtcNow;
+            Add("TLM", $"GATT sample {measurementStatus.Sequence} · age {measurementStatus.AgeMs} ms · flags 0x{measurementStatus.Flags:X2}");
+        }
+        else if (uuid == Measurements.GnssUuid)
+        {
+            var gnss = GnssMeasurement.Decode(bytes);
+            GnssStatus = !gnss.Present ? "—" : !gnss.Fresh ? "Stale" : gnss.PositionValid ? "Fix" : "No fix";
+            GnssDetails = !gnss.Present ? "No GNSS snapshot" : gnss.PositionValid
+                ? FormattableString.Invariant($"{gnss.Latitude:F5}, {gnss.Longitude:F5} · age {gnss.AgeMs / 1000.0:F1} s")
+                : FormattableString.Invariant($"No position · age {gnss.AgeMs / 1000.0:F1} s");
+        }
+        Temperature = measurementStatus?.SensorValid == true && typedTemperature.HasValue
+            ? typedTemperature.Value.ToString("F2", CultureInfo.InvariantCulture) : "—";
+        Pressure = measurementStatus?.SensorValid == true && typedPressure.HasValue
+            ? typedPressure.Value.ToString("F1", CultureInfo.InvariantCulture) : "—";
+        Refresh();
+    }
+
     private void UpdateReadout(string line)
     {
-        if (line.StartsWith("GNSS seq=", StringComparison.Ordinal))
+        if (demo && line.StartsWith("GNSS seq=", StringComparison.Ordinal))
         {
             GnssStatus = Regex.IsMatch(line, @"(?:^| )pos=1(?: |$)") ? "Fix" : "No fix";
             GnssDetails = line[5..];
@@ -203,9 +245,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var voltage = Regex.Match(line, @"^supply_mv=(\d+)");
         if (voltage.Success && double.TryParse(voltage.Groups[1].Value, out var mv)) Voltage = (mv / 1000).ToString("F3", CultureInfo.InvariantCulture);
         var temperature = Regex.Match(line, @"^Temperature = (-?[\d.]+)");
-        if (temperature.Success) Temperature = temperature.Groups[1].Value;
+        if (temperature.Success && demo) Temperature = temperature.Groups[1].Value;
         var pressure = Regex.Match(line, @"^Pressure = ([\d.]+)");
-        if (pressure.Success && double.TryParse(pressure.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var pa)) Pressure = (pa / 100).ToString("F1", CultureInfo.InvariantCulture);
+        if (pressure.Success && demo && double.TryParse(pressure.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var pa)) Pressure = (pa / 100).ToString("F1", CultureInfo.InvariantCulture);
         if (line == "OK LOG_STREAM ON") LogStreamLabel = "Firmware logs: streaming";
         if (line == "OK LOG_STREAM OFF") LogStreamLabel = "Firmware logs: off";
     }
@@ -322,6 +364,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Disconnect()
     {
+        typedTemperature = null;
+        typedPressure = null;
+        measurementStatus = null;
         transport.Disconnect();
         demoConnected = false;
         framer.Reset();

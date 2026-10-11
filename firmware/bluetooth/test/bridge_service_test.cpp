@@ -85,6 +85,16 @@ public:
 	ble::session_t session = 0;
 	bool busy = false;
 	ble::session_t receive_session = 0;
+	std::optional<bluetooth_measurement::snapshot> measurement;
+	ble::status update_measurement(const bluetooth_measurement::snapshot &value) override
+	{
+		measurement = value;
+		return {};
+	}
+	void reset_measurement() override
+	{
+		measurement.reset();
+	}
 	void set_receive_session(ble::session_t value) override
 	{
 		receive_session = value;
@@ -203,6 +213,39 @@ int main()
 	require(bridge.poll().has_value());
 	require(bluetooth.advertisements == 0);
 	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::not_ready));
+	handshake(25);
+	bluetooth_measurement::snapshot measurement{
+		.flags = bluetooth_measurement::sensor_valid,
+		.sensor_sequence = 42,
+		.temperature = -125,
+		.pressure = 1000000,
+		.sensor_lifetime_ms = 600000
+	};
+	const auto measurement_bytes = bluetooth_measurement::encode(measurement);
+	ble_bridge::frame publication{
+		.type = ble_bridge::frame_type::measurement,
+		.sequence = 123,
+		.session = 25,
+		.size = static_cast<ble_bridge::length_type>(measurement_bytes.size())
+	};
+	std::copy(measurement_bytes.begin(), measurement_bytes.end(), publication.payload.begin());
+	push(publication);
+	require(bridge.poll().has_value());
+	require(bluetooth.measurement && bluetooth.measurement->sensor_sequence == 42);
+	require(transport.written.back().sequence == 123 && transport.written.back().payload[0] == 0);
+	publication.payload[0] = 2;
+	push(publication);
+	require(bridge.poll().has_value());
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::invalid_request));
+	publication.payload[0] = 1;
+	publication.session = 24;
+	push(publication);
+	require(bridge.poll().has_value());
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::not_ready));
+	handshake(25);
+	require(!bluetooth.measurement);
+	handshake(26);
+	require(!bluetooth.measurement);
 	handshake(25);
 	transport.chunks.emplace_back(advertise.begin(), advertise.begin() + 5);
 	require(bridge.poll().has_value());

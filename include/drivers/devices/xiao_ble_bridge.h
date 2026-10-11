@@ -14,6 +14,7 @@ public:
 	status start_advertise() override;
 	status stop_advertise() override;
 	status send(std::span<const std::uint8_t> payload, std::uint32_t session) override;
+	status publish_measurement(std::span<const std::uint8_t> payload) override;
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override;
 
 private:

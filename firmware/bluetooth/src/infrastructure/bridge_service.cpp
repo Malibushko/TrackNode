@@ -36,6 +36,7 @@ status bridge_service::start()
 	link_ = {};
 	bridge_session_ = 0;
 	config_.bluetooth.set_receive_session(0);
+	config_.bluetooth.reset_measurement();
 	handshake_requested_ = false;
 	initialized_ = true;
 	return {};
@@ -254,6 +255,8 @@ status bridge_service::handle_frame(const ble_bridge::frame &frame)
 			return handle_hello(frame);
 		case ble_bridge::frame_type::send:
 			return handle_send(frame);
+		case ble_bridge::frame_type::measurement:
+			return handle_measurement(frame);
 		case ble_bridge::frame_type::advertise:
 			return handle_advertise(frame);
 		case ble_bridge::frame_type::stop_advertise:
@@ -272,6 +275,7 @@ status bridge_service::handle_hello(const ble_bridge::frame &frame)
 		return write_ack(frame, fail(component::protocol, error_code::invalid_config));
 	}
 
+	config_.bluetooth.reset_measurement();
 	if (frame.session != bridge_session_)
 	{
 		config_.bluetooth.set_receive_session(0);
@@ -300,6 +304,18 @@ status bridge_service::handle_send(const ble_bridge::frame &frame)
 	}
 	const auto sent = config_.bluetooth.send({frame.payload.data(), frame.size}, link_.session);
 	return write_ack(frame, sent);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status bridge_service::handle_measurement(const ble_bridge::frame &frame)
+{
+	const auto value = bluetooth_measurement::decode(std::span{frame.payload}.first(frame.size));
+	if (!value)
+	{
+		return write_ack(frame, fail(component::protocol, error_code::invalid_config));
+	}
+	return write_ack(frame, config_.bluetooth.update_measurement(*value));
 }
 
 //////////////////////////////////////////////////////////////////////////

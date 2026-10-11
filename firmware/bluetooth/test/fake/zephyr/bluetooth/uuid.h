@@ -13,6 +13,13 @@ struct bt_uuid_128
 	std::uint8_t val[16];
 };
 
+struct bt_uuid_16
+{
+	bt_uuid uuid;
+	std::uint16_t val;
+};
+#define BT_UUID_INIT_16(value) {{1}, value}
+
 #define BT_UUID_128_ENCODE(w32, w1, w2, w3, w48) \
 	static_cast<std::uint8_t>(w32), static_cast<std::uint8_t>((w32) >> 8), \
 	static_cast<std::uint8_t>((w32) >> 16), static_cast<std::uint8_t>((w32) >> 24), \
