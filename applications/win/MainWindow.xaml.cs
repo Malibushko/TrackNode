@@ -126,6 +126,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (!closed) Dispatcher.BeginInvoke(() => { if (!closed) action(); });
     }
 
+    private void MinimizeClicked(object sender, RoutedEventArgs args) => SystemCommands.MinimizeWindow(this);
+
+    private void MaximizeClicked(object sender, RoutedEventArgs args)
+    {
+        if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this);
+        else SystemCommands.MaximizeWindow(this);
+    }
+
+    private void CloseClicked(object sender, RoutedEventArgs args) => SystemCommands.CloseWindow(this);
+
+    protected override void OnStateChanged(EventArgs args)
+    {
+        base.OnStateChanged(args);
+        var label = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
+        MaximizeButton.ToolTip = label;
+        System.Windows.Automation.AutomationProperties.SetName(MaximizeButton, label);
+    }
+
     protected override void OnSourceInitialized(EventArgs args)
     {
         base.OnSourceInitialized(args);
