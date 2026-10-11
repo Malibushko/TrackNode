@@ -22,11 +22,13 @@ public:
 	std::vector<std::string> chunks;
 	std::vector<std::uint32_t> sessions;
 	std::function<void()> before_finish;
+	std::function<void(const bluetooth_event &)> before_event;
 	unsigned initialized = 0;
 	unsigned advertisements = 0;
 	std::uint32_t last_poll_timeout_ms = 0;
 	bool fail_init = false;
 	bool busy_advertise = false;
+	bool restart_poll = false;
 
 	status init() override
 	{
@@ -64,12 +66,22 @@ public:
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override
 	{
 		last_poll_timeout_ms = timeout_ms;
+		if (restart_poll)
+		{
+			restart_poll = false;
+			return fail(component::service, error_code::not_ready);
+		}
 		if (events.empty())
 		{
 			if (before_finish)
 			{
 				auto callback = std::move(before_finish);
 				callback();
+				if (restart_poll)
+				{
+					restart_poll = false;
+					return fail(component::service, error_code::not_ready);
+				}
 				return bluetooth_event{};
 			}
 
@@ -78,6 +90,10 @@ public:
 
 		const auto event = events.front();
 		events.pop_front();
+		if (before_event)
+		{
+			before_event(event);
+		}
 		return event;
 	}
 };
@@ -296,6 +312,56 @@ int main()
 	require(text.find("R\r\n", text.find("R\r\n") + 1) == std::string::npos);
 	require(custom_commands.received.empty());
 	custom_service.stop();
+
+	fake_backend recovery_backend;
+	fake_commands recovery_commands;
+	bluetooth_service recovery_service{recovery_backend, recovery_commands, logger, monitor};
+	require(recovery_service.start().has_value());
+	recovery_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {true, true, 20, 100}
+	});
+	recovery_backend.events.push_back(receive("SET LOG_STREAM ON", 100));
+	recovery_backend.before_finish = [&]
+	{
+		require(recovery_service.submit_reply(command_reply{
+			.session = 100,
+			.text = {'O', 'L', 'D', '\r', '\n'}
+		}).has_value());
+		logger.sink->submit_log("OLD LOG");
+		recovery_backend.restart_poll = true;
+		recovery_backend.events.push_back(bluetooth_event{
+			.type = bluetooth_event::kind::link_changed,
+			.link = {true, true, 20, 101}
+		});
+		recovery_backend.events.push_back(receive("PING", 101));
+	};
+	recovery_backend.before_event = [&](const bluetooth_event &event)
+	{
+		if (event.link.session == 101 && event.type == bluetooth_event::kind::received)
+		{
+			require(recovery_service.submit_reply(command_reply{
+				.session = 100,
+				.text = {'L', 'A', 'T', 'E', '\r', '\n'}
+			}).has_value());
+			logger.sink->submit_log("STALE LOG AFTER REBOOT");
+		}
+	};
+	try
+	{
+		fake_task(fake_argument);
+	}
+	catch (const finished &)
+	{
+	}
+	text.clear();
+	for (const auto &chunk : recovery_backend.chunks)
+	{
+		text += chunk;
+	}
+	require(recovery_backend.initialized == 2);
+	require(text == "OK LOG_STREAM ON\r\nPONG\r\n");
+	recovery_service.stop();
 
 	for (unsigned field = 0; field < 13; ++field)
 	{

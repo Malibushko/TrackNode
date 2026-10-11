@@ -37,6 +37,10 @@ int main()
 	require(connected && connected->link.connected && connected->link.session != 0);
 	require(connected->link.max_payload == 20 && !connected->link.subscribed);
 	const auto session = connected->link.session;
+	require(rx->write(&connection, rx, payload.data(), 3, 0, 0) == BT_GATT_ERR(BT_ATT_ERR_INSUFFICIENT_RESOURCES));
+	bluetooth.set_receive_session(session + 1);
+	require(rx->write(&connection, rx, payload.data(), 3, 0, 0) == BT_GATT_ERR(BT_ATT_ERR_INSUFFICIENT_RESOURCES));
+	bluetooth.set_receive_session(session);
 
 	require(rx->write(&connection, rx, payload.data(), 3, 1, 0) == BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET));
 	require(rx->write(&connection, rx, payload.data(), 3, 0, BT_GATT_WRITE_FLAG_PREPARE) == BT_GATT_ERR(BT_ATT_ERR_NOT_SUPPORTED));
@@ -110,6 +114,8 @@ int main()
 	const auto reconnected = bluetooth.poll(0);
 	require(reconnected && reconnected->link.session != session);
 	const auto next_session = reconnected->link.session;
+	require(rx->write(&replacement, rx, payload.data(), 3, 0, 0) == BT_GATT_ERR(BT_ATT_ERR_INSUFFICIENT_RESOURCES));
+	bluetooth.set_receive_session(next_session);
 	require(bluetooth.send({payload.data(), 3}, session).error().code == ble::error_code::not_connected);
 	require(rx->write(&connection, rx, payload.data(), 3, 0, 0) == BT_GATT_ERR(BT_ATT_ERR_UNLIKELY));
 	registered_gatt_callback->att_mtu_updated(&connection, 200, 200);

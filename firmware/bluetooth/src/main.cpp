@@ -28,6 +28,7 @@ int main()
 		.transport = transport,
 		.bluetooth = bluetooth,
 		.codec = codec,
+		.uptime_ms = []{ return k_uptime_get_32(); },
 
 		.poll_frequency_ms = 1,
 		.poll_transport_timeout_ms = 10,

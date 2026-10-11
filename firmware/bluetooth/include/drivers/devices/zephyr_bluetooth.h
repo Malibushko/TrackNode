@@ -24,6 +24,7 @@ public:
 	status init() override;
 	void stop() override;
 	status send(data_view data, session_t session) override;
+	void set_receive_session(session_t session) override;
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override;
 
 	status start_advertise() override;
@@ -72,6 +73,7 @@ private:
 	connection_ref active_connection_;
 	bluetooth_link link_{};
 	session_t last_session_ = 0;
+	session_t receive_session_ = 0;
 	bool initialized_{false};
 	bool overflow_ = false;
 };

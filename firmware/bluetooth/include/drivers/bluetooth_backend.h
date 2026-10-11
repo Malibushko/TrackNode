@@ -17,6 +17,7 @@ public:
 	virtual status stop_advertise() = 0;
 
 	virtual status send(data_view data, session_t session) = 0;
+	virtual void set_receive_session(session_t session) = 0;
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
 };
 }

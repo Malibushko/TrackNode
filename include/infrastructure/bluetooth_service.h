@@ -49,6 +49,7 @@ private:
 	status process_logs();
 	status send_log_line(std::uint32_t timestamp_ms, const char *text, std::uint32_t session);
 	void reset_log_stream();
+	void reset_exchange();
 	status handle_event(const bluetooth_event &event);
 	status send_text(std::string_view text, std::uint32_t session);
 	status send_error(const char *text, std::uint32_t session);

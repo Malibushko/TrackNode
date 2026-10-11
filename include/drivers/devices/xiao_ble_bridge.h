@@ -25,6 +25,7 @@ private:
 	status read_frames(std::uint32_t timeout_ms);
 	bool should_handle_frame(const ble_bridge::frame &frame) const;
 	status handle_ack(const ble_bridge::frame &frame);
+	status handle_hello(const ble_bridge::frame &frame);
 	status handle_ready(const ble_bridge::frame &frame);
 	status handle_link(const ble_bridge::frame &frame);
 	status handle_received(const ble_bridge::frame &frame);

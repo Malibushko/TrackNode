@@ -131,6 +131,7 @@ void zephyr_bluetooth::stop()
 		instance = nullptr;
 		initialized_ = false;
 		link_ = {};
+		receive_session_ = 0;
 		connection = std::move(active_connection_);
 	}
 
@@ -175,6 +176,14 @@ status zephyr_bluetooth::send(data_view data, session_t session)
 	}
 
 	return gatt_.notify(connection.get(), data);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_bluetooth::set_receive_session(session_t session)
+{
+	spin_lock_guard guard{callback_lock};
+	receive_session_ = session;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -341,6 +350,7 @@ void zephyr_bluetooth::on_connected(bt_conn *conn, std::uint8_t err)
 
 		previous = std::move(instance->active_connection_);
 		instance->active_connection_ = retain_connection(conn);
+		instance->receive_session_ = 0;
 		if (++instance->last_session_ == 0)
 		{
 			++instance->last_session_;
@@ -410,6 +420,10 @@ status zephyr_bluetooth::on_rx_received(void *context, bt_conn *connection, data
 		if (self.active_connection_.get() != connection || connection == nullptr)
 		{
 			return fail(component::bluetooth, error_code::not_connected);
+		}
+		if (self.receive_session_ == 0 || self.receive_session_ != self.link_.session)
+		{
+			return fail(component::bluetooth, error_code::busy);
 		}
 
 		pending = retain_connection(connection);

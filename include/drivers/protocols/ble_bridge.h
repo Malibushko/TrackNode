@@ -7,7 +7,7 @@
 
 namespace ble_bridge
 {
-constexpr std::uint8_t version = 1;
+constexpr std::uint8_t version = 2;
 constexpr std::uint32_t baud_rate = 115200;
 constexpr std::size_t payload_capacity = 128;
 

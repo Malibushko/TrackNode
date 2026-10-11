@@ -170,6 +170,16 @@ void bluetooth_service::reset_log_stream()
 
 //////////////////////////////////////////////////////////////////////////
 
+void bluetooth_service::reset_exchange()
+{
+	reset_log_stream();
+	xQueueReset(replies_);
+	xQueueReset(samples_);
+	xQueueReset(logs_);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status bluetooth_service::send_text(std::string_view text, std::uint32_t session)
 {
 	if (!link_.connected || !link_.subscribed || link_.session != session || link_.max_payload == 0)
@@ -232,7 +242,7 @@ status bluetooth_service::handle_link_changed(const bluetooth_link &link)
 {
 	if (link.session != link_.session || !link.connected || !link.subscribed)
 	{
-		reset_log_stream();
+		reset_exchange();
 	}
 	link_ = link;
 	advertise_pending_ = !link_.connected;
@@ -465,7 +475,7 @@ status bluetooth_service::process_logs()
 
 bool bluetooth_service::initialize_backend()
 {
-	reset_log_stream();
+	reset_exchange();
 	link_ = {};
 	advertise_pending_ = false;
 	const auto initialized = backend_.init();
@@ -520,6 +530,8 @@ bool bluetooth_service::handle_failure(error failure, bool poll_failed)
 	(void)logger_.write("BLE bridge failed: %u\r\n", static_cast<unsigned>(failure.code));
 	if (poll_failed || (failure.code != error_code::not_ready && failure.code != error_code::queue_full))
 	{
+		reset_exchange();
+		link_ = {};
 		backend_.stop();
 		return false;
 	}

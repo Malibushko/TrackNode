@@ -30,6 +30,7 @@ int main()
 	};
 	bool answer = true;
 	bool inject_rx = false;
+	bool reboot_during_send = false;
 	unsigned burst = 0;
 	auto result_code = ble_bridge::ack_code::ok;
 	ble_bridge::frame last_send{};
@@ -47,19 +48,30 @@ int main()
 		}
 		if (request.type == ble_bridge::frame_type::hello)
 		{
+			require(request.session != 0);
+			link.session = request.session;
 			auto ready = link;
 			ready.type = ble_bridge::frame_type::ready;
 			ready.sequence = request.sequence;
+			auto stale = ready;
+			stale.session = request.session - 1;
+			push(stale);
+			push(ble_bridge::frame{});
 			push(ready);
 		}
 		else
 		{
 			last_send = request;
+			if (reboot_during_send)
+			{
+				push(ble_bridge::frame{});
+				return {};
+			}
 			if (inject_rx)
 			{
 				push(ble_bridge::frame{
 					.type = ble_bridge::frame_type::received,
-					.session = 7,
+					.session = link.session,
 					.size = 4,
 					.payload = {'P', 'I', 'N', 'G'}
 				});
@@ -69,7 +81,7 @@ int main()
 			{
 				push(ble_bridge::frame{
 					.type = ble_bridge::frame_type::received,
-					.session = 7,
+					.session = link.session,
 					.size = 1,
 					.payload = {'X'}
 				});
@@ -80,6 +92,13 @@ int main()
 				.sequence = static_cast<ble_bridge::sequence_type>(request.sequence + 1),
 				.session = request.session,
 				.size = 1
+			});
+			push(ble_bridge::frame{
+				.type = ble_bridge::frame_type::ack,
+				.sequence = request.sequence,
+				.session = request.session + 1,
+				.size = 1,
+				.payload = {static_cast<std::uint8_t>(ble_bridge::ack_code::io)}
 			});
 			push(ble_bridge::frame{
 				.type = ble_bridge::frame_type::ack,
@@ -106,17 +125,39 @@ int main()
 	require(!backend.send(payload, session + 1));
 	inject_rx = true;
 	require(backend.send(payload, session).has_value());
-	require(last_send.session == 7 && last_send.size == 4 && last_send.payload[0] == 'P');
+	require(last_send.session == session && last_send.size == 4 && last_send.payload[0] == 'P');
 	require(backend.poll(0)->type == bluetooth_event::kind::received);
 	inject_rx = false;
 	result_code = ble_bridge::ack_code::busy;
 	require(backend.send(payload, session).error().code == error_code::queue_full);
 	result_code = ble_bridge::ack_code::ok;
 	require(backend.start_advertise().has_value());
-	require(last_send.type == ble_bridge::frame_type::advertise && last_send.session == 0);
+	require(last_send.type == ble_bridge::frame_type::advertise && last_send.session == session);
 	require(backend.stop_advertise().has_value());
+	transport.chunk_size = ble_bridge::wire_frame_capacity;
+	push(ble_bridge::frame{});
+	require(backend.poll(0).error().code == error_code::not_ready);
+	require(!backend.send(payload, session));
+	require(backend.init().has_value());
+	auto restarted = backend.poll(0)->link.session;
+	require(restarted != session);
+	push(ble_bridge::frame{
+		.type = ble_bridge::frame_type::received,
+		.session = session,
+		.size = 1,
+		.payload = {'X'}
+	});
+	require(backend.poll(0)->type == bluetooth_event::kind::idle);
+	reboot_during_send = true;
+	require(backend.send(payload, restarted).error().code == error_code::not_ready);
+	reboot_during_send = false;
+	require(backend.init().has_value());
+	require(backend.poll(0)->link.session != restarted);
 
 	backend.stop();
+	answer = false;
+	require(backend.init().error().code == error_code::timeout_error);
+	answer = true;
 	require(backend.init().has_value());
 	event = backend.poll(0).value();
 	require(event.link.session != session);

@@ -50,7 +50,14 @@ status xiao_ble_bridge::init()
 		return resynchronized;
 	}
 
-	ble_bridge::frame hello{};
+	if (++session_counter_ == 0)
+	{
+		++session_counter_;
+	}
+	remote_session_ = session_counter_;
+	ble_bridge::frame hello{
+		.session = remote_session_
+	};
 	const auto ready = send_and_wait_for_response(hello, ble_bridge::frame_type::ready);
 	initialized_ = ready.has_value();
 	return ready;
@@ -80,7 +87,8 @@ status xiao_ble_bridge::start_advertise()
 	}
 
 	ble_bridge::frame request{
-		.type = ble_bridge::frame_type::advertise
+		.type = ble_bridge::frame_type::advertise,
+		.session = remote_session_
 	};
 	return send_and_wait_for_response(request, ble_bridge::frame_type::ack);
 }
@@ -95,7 +103,8 @@ status xiao_ble_bridge::stop_advertise()
 	}
 
 	ble_bridge::frame request{
-		.type = ble_bridge::frame_type::stop_advertise
+		.type = ble_bridge::frame_type::stop_advertise,
+		.session = remote_session_
 	};
 	return send_and_wait_for_response(request, ble_bridge::frame_type::ack);
 }
@@ -216,10 +225,12 @@ bool xiao_ble_bridge::should_handle_frame(const ble_bridge::frame &frame) const
 {
 	if (waiting_ && expected_type_ == ble_bridge::frame_type::ready)
 	{
-		return frame.type == ble_bridge::frame_type::ready && frame.sequence == pending_sequence_;
+		return frame.type == ble_bridge::frame_type::ready && frame.sequence == pending_sequence_ &&
+			frame.session == pending_session_;
 	}
 
-	return frame.type != ble_bridge::frame_type::ready;
+	return frame.type == ble_bridge::frame_type::hello ||
+		(frame.type != ble_bridge::frame_type::ready && frame.session == remote_session_);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -233,6 +244,8 @@ status xiao_ble_bridge::handle_frame(const ble_bridge::frame &frame)
 
 	switch (frame.type)
 	{
+		case ble_bridge::frame_type::hello:
+			return handle_hello(frame);
 		case ble_bridge::frame_type::ack:
 			return handle_ack(frame);
 		case ble_bridge::frame_type::ready:
@@ -257,6 +270,18 @@ status xiao_ble_bridge::handle_ack(const ble_bridge::frame &frame)
 		answered_ = true;
 	}
 
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status xiao_ble_bridge::handle_hello(const ble_bridge::frame &frame)
+{
+	if (frame.size == 0 && frame.session == 0 && frame.sequence == 0)
+	{
+		stop();
+		return fail(component::service, error_code::not_ready);
+	}
 	return {};
 }
 
@@ -303,16 +328,6 @@ result<bluetooth_link> xiao_ble_bridge::decode_link(const ble_bridge::frame &fra
 
 void xiao_ble_bridge::update_link(bluetooth_link next)
 {
-	if (next.connected && (!link_.connected || next.session != remote_session_))
-	{
-		if (++session_counter_ == 0)
-		{
-			++session_counter_;
-		}
-	}
-
-	remote_session_ = next.session;
-	next.session = session_counter_;
 	link_ = next;
 }
 

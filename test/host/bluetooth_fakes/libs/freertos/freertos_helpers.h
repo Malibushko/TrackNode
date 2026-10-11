@@ -34,6 +34,11 @@ inline void vQueueDelete(QueueHandle_t queue)
 {
 	delete queue;
 }
+inline BaseType_t xQueueReset(QueueHandle_t queue)
+{
+	queue->items.clear();
+	return pdPASS;
+}
 inline BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t)
 {
 	if (queue->items.size() == queue->capacity)

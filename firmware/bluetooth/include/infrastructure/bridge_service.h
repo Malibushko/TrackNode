@@ -20,10 +20,12 @@ struct bridge_config
 	uart &transport;
 	bluetooth_backend &bluetooth;
 	ble_bridge::bridge_codec &codec;
+	std::uint32_t (*uptime_ms)() = nullptr;
 
 	std::uint32_t poll_frequency_ms = 1;
 	std::uint32_t poll_transport_timeout_ms = 10;
 	std::uint32_t poll_bluetooth_timeout_ms = 0;
+	std::uint32_t handshake_retry_ms = 1000;
 };
 
 class bridge_service
@@ -39,6 +41,8 @@ private:
 
 	status poll_transport();
 	status poll_bluetooth();
+	status request_handshake();
+	status drain_bluetooth();
 	status handle_link_changed(const bluetooth_event &event);
 	status handle_received(const bluetooth_event &event);
 	status handle_hello(const ble_bridge::frame &frame);
@@ -57,6 +61,9 @@ private:
 	std::array<std::uint8_t, ble_bridge::wire_frame_capacity> buffer_{};
 
 	ble::bluetooth_link link_{};
+	ble_bridge::session_type bridge_session_ = 0;
+	std::uint32_t last_handshake_ms_ = 0;
+	bool handshake_requested_ = false;
 	bool initialized_{ false };
 };
 }
