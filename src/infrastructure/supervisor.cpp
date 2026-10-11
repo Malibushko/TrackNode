@@ -43,8 +43,14 @@ void supervisor::stop()
 
 void supervisor::set_health(service_id id, service_health health)
 {
+	taskENTER_CRITICAL();
 	health_[index(id)].store(health, std::memory_order_relaxed);
+	if (health == service_health::ready || health == service_health::disabled)
+	{
+		service_errors_[index(id)].reset();
+	}
 	recompute_state();
+	taskEXIT_CRITICAL();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -53,6 +59,7 @@ void supervisor::report(service_id id, error failure, service_health health)
 {
 	taskENTER_CRITICAL();
 	last_error_ = failure;
+	service_errors_[index(id)] = failure;
 	health_[index(id)].store(health, std::memory_order_relaxed);
 	recompute_state();
 	taskEXIT_CRITICAL();
@@ -80,6 +87,19 @@ void supervisor::progress(service_id id, TickType_t now)
 service_health supervisor::health(service_id id) const
 {
 	return health_[index(id)].load(std::memory_order_relaxed);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+service_diagnostic supervisor::diagnostic(service_id id) const
+{
+	taskENTER_CRITICAL();
+	const service_diagnostic value{
+		.health = health(id),
+		.failure = service_errors_[index(id)]
+	};
+	taskEXIT_CRITICAL();
+	return value;
 }
 
 //////////////////////////////////////////////////////////////////////////

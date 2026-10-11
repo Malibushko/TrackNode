@@ -317,6 +317,7 @@ status bluetooth_service::handle_command(std::string_view text, std::uint32_t se
 status bluetooth_service::handle_log_stream(bool enabled, std::uint32_t session)
 {
 	reset_log_stream();
+	diagnostics_.reset();
 	log_message discarded{};
 	while (xQueueReceive(logs_, &discarded, 0) == pdPASS)
 	{
@@ -433,6 +434,26 @@ status bluetooth_service::send_log_line(std::uint32_t timestamp_ms, const char *
 
 //////////////////////////////////////////////////////////////////////////
 
+result<bool> bluetooth_service::process_diagnostic(std::uint32_t session)
+{
+	const auto record = diagnostics_.next(monitor_);
+	if (!record)
+	{
+		return false;
+	}
+	std::array<char, bluetooth_config::log_text_storage_capacity> text{};
+	const auto sent = format_diagnostic(*record, text)
+		.and_then([&]{ return send_log_line(pdTICKS_TO_MS(xTaskGetTickCount()), text.data(), session); });
+	if (!sent)
+	{
+		return tl::unexpected(sent.error());
+	}
+	diagnostics_.accept(*record);
+	return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status bluetooth_service::process_logs()
 {
 	const auto session = log_session_.load();
@@ -456,8 +477,21 @@ status bluetooth_service::process_logs()
 			return sent;
 		}
 	}
-	for (std::size_t index = 0; index < config_.logs_per_cycle && xQueueReceive(logs_, &message, 0) == pdPASS; ++index)
+	for (std::size_t index = 0; index < config_.logs_per_cycle; ++index)
 	{
+		const auto diagnostic = process_diagnostic(session);
+		if (!diagnostic)
+		{
+			return tl::unexpected(diagnostic.error());
+		}
+		if (*diagnostic)
+		{
+			continue;
+		}
+		if (xQueueReceive(logs_, &message, 0) != pdPASS)
+		{
+			break;
+		}
 		if (message.session != session)
 		{
 			continue;

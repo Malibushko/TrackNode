@@ -363,6 +363,49 @@ int main()
 	require(text == "OK LOG_STREAM ON\r\nPONG\r\n");
 	recovery_service.stop();
 
+	fake_backend diagnostic_backend;
+	fake_commands diagnostic_commands;
+	supervisor diagnostic_monitor;
+	diagnostic_monitor.report(service_id::console, error{component::uart, error_code::uart_error, HAL_ERROR, 8}, service_health::degraded);
+	bluetooth_service diagnostic_service{diagnostic_backend, diagnostic_commands, logger, diagnostic_monitor};
+	require(diagnostic_service.start().has_value());
+	diagnostic_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {true, true, 120, 200}
+	});
+	diagnostic_backend.events.push_back(receive("SET LOG_STREAM ON", 200));
+	diagnostic_backend.events.push_back(bluetooth_event{});
+	diagnostic_backend.events.push_back(bluetooth_event{});
+	diagnostic_backend.before_finish = [&]
+	{
+		diagnostic_monitor.set_health(service_id::console, service_health::ready);
+		diagnostic_monitor.report(service_id::logger, error{component::uart, error_code::timeout_error}, service_health::degraded);
+		diagnostic_backend.events.push_back(bluetooth_event{});
+		diagnostic_backend.events.push_back(receive("SET LOG_STREAM OFF", 200));
+		diagnostic_backend.events.push_back(receive("SET LOG_STREAM ON", 200));
+	};
+	try
+	{
+		fake_task(fake_argument);
+	}
+	catch (const finished &)
+	{
+	}
+	text.clear();
+	for (const auto &chunk : diagnostic_backend.chunks)
+	{
+		text += chunk;
+	}
+	const auto console_fault = text.find("HEALTH console degraded component=");
+	require(console_fault != std::string::npos);
+	require(text.find("detail=8\r\n", console_fault) != std::string::npos);
+	require(text.find("HEALTH console degraded", console_fault + 1) == std::string::npos);
+	require(text.find("HEALTH console ready\r\n") != std::string::npos);
+	const auto logger_fault = text.find("HEALTH logger degraded component=");
+	require(logger_fault != std::string::npos);
+	require(text.find("HEALTH logger degraded component=", logger_fault + 1) != std::string::npos);
+	diagnostic_service.stop();
+
 	for (unsigned field = 0; field < 13; ++field)
 	{
 		bluetooth_config invalid;

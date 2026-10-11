@@ -26,6 +26,7 @@ public: // Supervisor API
 	void progress(service_id id, TickType_t now);
 
 	[[nodiscard]] service_health health(service_id id) const;
+	[[nodiscard]] service_diagnostic diagnostic(service_id id) const;
 	[[nodiscard]] program_state state() const { return state_.load(std::memory_order_relaxed); }
 	[[nodiscard]] std::optional<error> last_error() const;
 
@@ -46,4 +47,5 @@ private: // State
 	std::array<std::atomic<TickType_t>, service_count> last_progress_{};
 	std::atomic<program_state> state_{ program_state::initialization_error };
 	std::optional<error> last_error_;
+	std::array<std::optional<error>, service_count> service_errors_{};
 };

@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 
 enum class program_state
 {
@@ -36,6 +37,15 @@ enum class service_health : std::uint8_t
 	ready,
 	degraded,
 	failed
+};
+
+const char *service_name(service_id id);
+const char *health_name(service_health health);
+
+struct service_diagnostic
+{
+	service_health health;
+	std::optional<error> failure;
 };
 
 #ifndef NO_STORAGE

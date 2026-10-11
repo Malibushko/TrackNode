@@ -4,6 +4,7 @@
 #include "application/command_sink.h"
 #include "application/firmware_log_sink.h"
 #include "infrastructure/bluetooth_config.h"
+#include "infrastructure/diagnostic_log.h"
 #include <atomic>
 #include "drivers/bluetooth_backend.h"
 #include "libs/freertos/freertos_helpers.h"
@@ -47,6 +48,7 @@ private:
 	status process_replies();
 	status process_sample();
 	status process_logs();
+	result<bool> process_diagnostic(std::uint32_t session);
 	status send_log_line(std::uint32_t timestamp_ms, const char *text, std::uint32_t session);
 	void reset_log_stream();
 	void reset_exchange();
@@ -76,4 +78,5 @@ private:
 	};
 	std::atomic<std::uint32_t> log_session_{0};
 	std::atomic<std::uint32_t> dropped_logs_{0};
+	diagnostic_log diagnostics_;
 };

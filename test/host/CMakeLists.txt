@@ -106,6 +106,8 @@ add_test(NAME xiao_ble_bridge_test COMMAND xiao_ble_bridge_test)
 
 add_executable(bluetooth_service_test bluetooth_service_test.cpp
     "${PROJECT_SOURCE_DIR}/src/infrastructure/bluetooth_service.cpp"
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/diagnostic_log.cpp"
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/service_status.cpp"
     "${PROJECT_SOURCE_DIR}/src/infrastructure/command_parser.cpp"
     "${PROJECT_SOURCE_DIR}/src/application/log_record.cpp")
 target_include_directories(bluetooth_service_test PRIVATE bluetooth_fakes)
