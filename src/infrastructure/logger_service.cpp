@@ -49,16 +49,22 @@ void *logger_service::tx_operation::promise_type::operator new(
 logger_service::tx_operation logger_service::send_async(logger_service *owner,
 	const std::uint8_t *data, std::size_t size)
 {
-	co_return co_await owner->output_.write_async(data, size);
+	co_return co_await owner->output_->write_async(data, size);
 }
 
 //////////////////////////////////////////////////////////////////////////
 
 status logger_service::start()
 {
-	if (inbox_)
+	if (started_)
 	{
 		return fail(component::rtos, error_code::already_initialized);
+	}
+	if (!output_)
+	{
+		started_ = true;
+		monitor_.set_health(service_id::logger, service_health::ready);
+		return {};
 	}
 	inbox_ = xQueueCreate(8, sizeof(message));
 	if (!inbox_)
@@ -75,6 +81,7 @@ status logger_service::start()
 		return tl::make_unexpected(created.error());
 	}
 	task_ = *created;
+	started_ = true;
 	monitor_.set_health(service_id::logger, service_health::ready);
 	return {};
 }
@@ -83,6 +90,7 @@ status logger_service::start()
 
 void logger_service::stop()
 {
+	started_ = false;
 	if (task_)
 	{
 		vTaskDelete(task_);
@@ -99,7 +107,7 @@ void logger_service::stop()
 
 status logger_service::write(const char *format, ...)
 {
-	if (!inbox_)
+	if (!started_)
 	{
 		dropped_.fetch_add(1);
 		return fail(component::rtos, error_code::not_initialized);
@@ -119,6 +127,10 @@ status logger_service::write(const char *format, ...)
 	if (auto *sink = log_sink_.load())
 	{
 		sink->submit_log({entry.text, static_cast<std::size_t>(length)});
+	}
+	if (!output_)
+	{
+		return {};
 	}
 	if (xQueueSend(inbox_, &entry, 0) != pdPASS)
 	{

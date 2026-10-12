@@ -13,7 +13,8 @@
 class logger_service final : public command_reply_sink
 {
 public:
-	logger_service(uart &output, supervisor &monitor) : output_(output), monitor_(monitor) {}
+	explicit logger_service(supervisor &monitor) : monitor_(monitor) {}
+	logger_service(uart &output, supervisor &monitor) : output_(&output), monitor_(monitor) {}
 
 public: // Common lifecycle
 	status start();
@@ -68,8 +69,9 @@ private: // Common task loop
 	void run();
 
 private: // State
-	uart &output_;
+	uart *output_ = nullptr;
 	supervisor &monitor_;
+	bool started_ = false;
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;
 	std::atomic<std::uint32_t> dropped_{ 0 };

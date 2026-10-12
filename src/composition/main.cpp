@@ -6,7 +6,7 @@
 #include "platform/error.h"
 #include "application/node_controller.h"
 #include "drivers/devices/neo6m.h"
-#include "infrastructure/console_service.h"
+#include "infrastructure/logger_service.h"
 #include "infrastructure/sensor_service.h"
 #include "infrastructure/board_state_service.h"
 #include "infrastructure/control_button_service.h"
@@ -90,7 +90,7 @@ status configure_watchdog(firmware_composition &application)
 
 	static supervisor monitor{device};
 
-	if (auto added = application.services.add(service_id::watchdog, monitor, {service_id::console}); !added)
+	if (auto added = application.services.add(service_id::watchdog, monitor, {service_id::sensor}); !added)
 	{
 		return added;
 	}
@@ -102,38 +102,16 @@ status configure_watchdog(firmware_composition &application)
 
 //////////////////////////////////////////////////////////////////////////
 
-status configure_console(firmware_composition &application)
+status configure_logger(firmware_composition &application)
 {
 	if (!application.monitor)
 	{
 		return fail(component::service, error_code::invalid_config);
 	}
 
-	static uart device{uart_config{
-	    .instance = USART1,
-	    .tx = {GPIOA, GPIO_PIN_9},
-	    .rx = {GPIOA, GPIO_PIN_10},
-	    .alternate = GPIO_AF7_USART1,
-	    .baud_rate = 115200,
-	    .mode = UART_MODE_TX_RX,
-	    .rx_pull = GPIO_PULLUP
-	}};
-
-	if (auto added = application.devices.add("console", device, component_startup::initialize); !added)
-	{
-		return added;
-	}
-
-	static logger_service logger{device, *application.monitor};
+	static logger_service logger{*application.monitor};
 
 	if (auto added = application.services.add(service_id::logger, logger); !added)
-	{
-		return added;
-	}
-
-	static console_service console{device, application.commands, logger, *application.monitor};
-
-	if (auto added = application.services.add(service_id::console, console, {service_id::sensor}); !added)
 	{
 		return added;
 	}
@@ -351,10 +329,10 @@ status configure_bluetooth(firmware_composition &application)
 	}
 
 	static uart transport{uart_config{
-	    .instance = USART6,
-		.tx = pin{ GPIOA,  GPIO_PIN_11 },
-		.rx = pin{ GPIOA, GPIO_PIN_12 },
-	    .alternate = GPIO_AF8_USART6,
+	    .instance = USART1,
+	    .tx = {GPIOA, GPIO_PIN_9},
+	    .rx = {GPIOA, GPIO_PIN_10},
+	    .alternate = GPIO_AF7_USART1,
 	    .baud_rate = 115200,
 	    .mode = UART_MODE_TX_RX,
 	    .rx_buffer_size = 1024,
@@ -478,7 +456,7 @@ int main()
 
 	auto configured = configure_telemetry_journal(application)
 	    .and_then([&]{ return configure_watchdog(application); })
-	    .and_then([&]{ return configure_console(application); })
+	    .and_then([&]{ return configure_logger(application); })
 	    .and_then([&]{ return configure_sensors(application); })
 	    .and_then([&]{ return configure_indicator(application); })
 	    .and_then([&]{ return configure_gnss(application); })
