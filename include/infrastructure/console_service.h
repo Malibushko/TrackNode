@@ -3,14 +3,14 @@
 #include "application/command_sink.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/track_node_control_protocol.h"
-#include "misc/uart_read_adapter.h"
+#include "misc/serial_read_adapter.h"
 
 #include <atomic>
 
 class console_service
 {
 public:
-	console_service(uart &input, command_sink &commands,
+	console_service(serial_device &input, command_sink &commands,
 	                logger_service &logger, supervisor &monitor)
 	    : input_(input), commands_(commands),
 	      logger_(logger), monitor_(monitor) {}
@@ -28,7 +28,7 @@ private: // Common task loop
 	void handle_event(protocol_event event);
 
 private: // State
-	uart_read_adapter input_;
+	serial_read_adapter input_;
 	track_node_control_protocol protocol_;
 	command_sink &commands_;
 	logger_service &logger_;

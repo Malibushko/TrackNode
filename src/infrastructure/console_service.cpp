@@ -41,18 +41,26 @@ void console_service::run()
 {
 	while (true)
 	{
-		const auto byte = input_.read();
-		if (!input_.last_error())
-		{
-			handle_event(protocol_.feed(byte));
-		}
-		if (const auto failure = input_.last_error())
+		const auto received = input_.read();
+		if (!received)
 		{
 			protocol_.reset();
-			monitor_.report(service_id::console, *failure, service_health::degraded);
+			if (received.error().code != error_code::not_ready)
+			{
+				monitor_.report(service_id::console, received.error(), service_health::degraded);
+			}
 			vTaskDelay(pdMS_TO_TICKS(10));
+			continue;
 		}
-		else if (monitor_.health(service_id::console) == service_health::degraded)
+		if (*received)
+		{
+			handle_event(protocol_.feed(**received));
+		}
+		else
+		{
+			vTaskDelay(pdMS_TO_TICKS(5));
+		}
+		if (monitor_.health(service_id::console) == service_health::degraded)
 		{
 			monitor_.set_health(service_id::console, service_health::ready);
 		}

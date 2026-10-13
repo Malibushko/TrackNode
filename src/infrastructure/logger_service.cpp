@@ -49,7 +49,16 @@ void *logger_service::tx_operation::promise_type::operator new(
 logger_service::tx_operation logger_service::send_async(logger_service *owner,
 	const std::uint8_t *data, std::size_t size)
 {
-	co_return co_await owner->output_->write_async(data, size);
+	const auto sent = co_await owner->output_->write_async(data, size);
+	if (!sent)
+	{
+		co_return tl::make_unexpected(sent.error());
+	}
+	if (*sent != size)
+	{
+		co_return fail(component::service, error_code::device_error);
+	}
+	co_return status{};
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -93,6 +102,12 @@ void logger_service::stop()
 	started_ = false;
 	if (task_)
 	{
+		vTaskSuspend(task_);
+		if (active_tx_)
+		{
+			active_tx_.destroy();
+			active_tx_ = {};
+		}
 		vTaskDelete(task_);
 		task_ = nullptr;
 	}
@@ -121,7 +136,7 @@ status logger_service::write(const char *format, ...)
 	if (length < 0 || static_cast<std::size_t>(length) >= sizeof(entry.text))
 	{
 		dropped_.fetch_add(1);
-		return fail(component::uart, error_code::invalid_argument);
+		return fail(component::service, error_code::invalid_argument);
 	}
 	entry.text[sizeof(entry.text) - 1] = '\0';
 	if (auto *sink = log_sink_.load())
@@ -160,7 +175,10 @@ void logger_service::run()
 		}
 
 		const auto length = strnlen(entry.text, sizeof(entry.text));
+		taskENTER_CRITICAL();
 		auto operation = send_async(this, reinterpret_cast<const std::uint8_t *>(entry.text), length);
+		active_tx_ = operation.handle;
+		taskEXIT_CRITICAL();
 		if (!operation.done())
 		{
 			(void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
@@ -169,12 +187,23 @@ void logger_service::run()
 		if (auto sent = operation.result(); !sent)
 		{
 			failed_writes_.fetch_add(1);
-			monitor_.report(service_id::logger, sent.error(), service_health::degraded);
+			if (sent.error().code != error_code::not_ready)
+			{
+				monitor_.report(service_id::logger, sent.error(), service_health::degraded);
+			}
 		}
 		else if (monitor_.health(service_id::logger) == service_health::degraded)
 		{
 			monitor_.set_health(service_id::logger, service_health::ready);
 		}
+		taskENTER_CRITICAL();
+		if (operation.handle)
+		{
+			operation.handle.destroy();
+			operation.handle = {};
+		}
+		active_tx_ = {};
+		taskEXIT_CRITICAL();
 	}
 }
 

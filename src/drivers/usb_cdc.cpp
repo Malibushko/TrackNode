@@ -58,6 +58,13 @@ status usb_cdc::start()
 
 //////////////////////////////////////////////////////////////////////////
 
+status usb_cdc::poll()
+{
+	return device_.poll();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void usb_cdc::stop()
 {
 	if (!initialized_)
@@ -128,7 +135,7 @@ result<std::size_t> usb_cdc::read(std::uint8_t *data, std::size_t size)
 
 //////////////////////////////////////////////////////////////////////////
 
-result<std::size_t> usb_cdc::write(const std::uint8_t *data, std::size_t size)
+result<std::size_t> usb_cdc::write(const std::uint8_t *data, std::size_t size, TaskHandle_t waiter)
 {
 	if (!initialized_)
 	{
@@ -153,16 +160,30 @@ result<std::size_t> usb_cdc::write(const std::uint8_t *data, std::size_t size)
 	std::memcpy(tx_packet_.data(), data, count);
 	auto &stack = device_.native_handle();
 	USBD_CDC_SetTxBuffer(&stack, tx_packet_.data(), count);
+	write_waiter_ = waiter;
 	tx_busy_ = true;
 	const auto sent = USBD_CDC_TransmitPacket(&stack);
 	if (sent != USBD_OK)
 	{
+		write_waiter_ = nullptr;
 		tx_busy_ = false;
 		taskEXIT_CRITICAL();
 		return fail(component::usb, error_code::not_ready);
 	}
 	taskEXIT_CRITICAL();
 	return count;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void usb_cdc::clear_write_waiter(TaskHandle_t waiter)
+{
+	taskENTER_CRITICAL();
+	if (write_waiter_ == waiter)
+	{
+		write_waiter_ = nullptr;
+	}
+	taskEXIT_CRITICAL();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -262,6 +283,7 @@ std::int8_t usb_cdc::on_receive(std::uint8_t *data, std::uint32_t *size)
 std::int8_t usb_cdc::on_transmitted(std::uint8_t *, std::uint32_t *, std::uint8_t)
 {
 	active_->tx_busy_ = false;
+	active_->notify_write_waiter();
 	return USBD_OK;
 }
 
@@ -275,6 +297,29 @@ void usb_cdc::reset_session()
 	rx_head_ = 0;
 	rx_size_ = 0;
 	++session_;
+	notify_write_waiter();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void usb_cdc::notify_write_waiter()
+{
+	const auto waiter = write_waiter_;
+	write_waiter_ = nullptr;
+	if (!waiter)
+	{
+		return;
+	}
+	if (__get_IPSR() != 0)
+	{
+		BaseType_t higher_priority_woken = pdFALSE;
+		vTaskNotifyGiveFromISR(waiter, &higher_priority_woken);
+		portYIELD_FROM_ISR(higher_priority_woken);
+	}
+	else
+	{
+		xTaskNotifyGive(waiter);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -43,6 +43,28 @@ status usb_device::init()
 	{
 		return fail(component::usb, error_code::invalid_config);
 	}
+	const bool vbus_pin_present = config_.vbus.port != nullptr;
+	const bool single_vbus_pin = config_.vbus.mask != 0 &&
+		(config_.vbus.mask & (config_.vbus.mask - 1)) == 0;
+	const bool vbus_overlaps_data = config_.vbus.port == GPIOA &&
+		(config_.vbus.mask & (GPIO_PIN_11 | GPIO_PIN_12)) != 0;
+	const bool valid_vbus_pin = vbus_pin_present ? single_vbus_pin : config_.vbus.mask == 0;
+	if (!valid_vbus_pin || vbus_overlaps_data)
+	{
+		return fail(component::usb, error_code::invalid_config);
+	}
+	if (vbus_pin_present)
+	{
+		gpio detector{gpio_config{
+			.pin = config_.vbus,
+			.mode = GPIO_MODE_INPUT,
+			.pull = GPIO_NOPULL
+		}};
+		if (auto initialized = detector.init(); !initialized)
+		{
+			return initialized;
+		}
+	}
 	prepare_descriptors();
 	active_ = this;
 	pcd_.Instance = USB_OTG_FS;
@@ -83,7 +105,7 @@ status usb_device::start()
 		return fail(component::usb, error_code::invalid_config);
 	}
 	started_ = true;
-	if (auto attached = set_vbus_present(vbus_present_); !attached)
+	if (auto attached = config_.vbus.port ? poll() : set_vbus_present(vbus_present_); !attached)
 	{
 		started_ = false;
 		return attached;
@@ -102,6 +124,7 @@ void usb_device::stop()
 	HAL_NVIC_DisableIRQ(OTG_FS_IRQn);
 	if (attached_)
 	{
+		attached_ = false;
 		(void)USBD_Stop(&stack_);
 		stack_.dev_state = USBD_STATE_DEFAULT;
 		stack_.dev_config = 0;
@@ -155,12 +178,28 @@ status usb_device::set_vbus_present(bool present)
 	}
 	else
 	{
+		attached_ = false;
 		(void)USBD_Stop(&stack_);
 		stack_.dev_state = USBD_STATE_DEFAULT;
 		stack_.dev_config = 0;
 		attached_ = false;
 	}
 	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status usb_device::poll()
+{
+	if (!initialized_)
+	{
+		return fail(component::usb, error_code::not_initialized);
+	}
+	if (!config_.vbus.port)
+	{
+		return {};
+	}
+	return set_vbus_present(HAL_GPIO_ReadPin(config_.vbus.port, config_.vbus.mask) == GPIO_PIN_SET);
 }
 
 //////////////////////////////////////////////////////////////////////////

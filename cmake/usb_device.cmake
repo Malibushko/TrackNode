@@ -1,4 +1,10 @@
 set(USB_DEVICE_ROOT "${STM32CUBE_F4_ROOT}/Middlewares/ST/STM32_USB_Device_Library")
+set(TRACK_NODE_USB_VID "0x0483" CACHE STRING "Bench USB vendor ID")
+set(TRACK_NODE_USB_PID "0x5740" CACHE STRING "Bench USB product ID")
+target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE
+    TRACK_NODE_USB_VID=${TRACK_NODE_USB_VID}
+    TRACK_NODE_USB_PID=${TRACK_NODE_USB_PID}
+)
 if(NOT EXISTS "${USB_DEVICE_ROOT}/Class/CDC/Inc/usbd_cdc.h")
     message(FATAL_ERROR "STM32CubeF4 must include the USB Device Library with CDC")
 endif()

@@ -14,6 +14,7 @@ struct usb_device_config
 	const char *product = "TrackNode";
 	const char *serial = nullptr;
 	std::uint32_t irq_priority = 5;
+	pin vbus{};
 };
 
 struct usb_class_identity
@@ -35,6 +36,7 @@ public:
 	status start();
 	void stop();
 	void deinit();
+	status poll();
 	status set_vbus_present(bool present);
 	[[nodiscard]] bool configured() const;
 

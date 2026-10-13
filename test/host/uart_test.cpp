@@ -1,4 +1,5 @@
 #include "drivers/uart.h"
+#include "drivers/uart_serial_device.h"
 #include <stdexcept>
 
 namespace
@@ -110,4 +111,44 @@ int main()
 	require(!received && received.error().hal_detail == (HAL_UART_ERROR_FE | HAL_UART_ERROR_NE));
 	require(serial.handle().RxState == HAL_UART_STATE_BUSY_RX);
 	require(serial.read(&byte, 1, 0).has_value());
+
+	uart_serial_device adapter{serial};
+	serial_device &transport = adapter;
+	fake_wait_hook = receive_error_then_complete_tx;
+	const auto written = transport.write(&byte, 1);
+	require(written && *written == 1);
+	auto unsupported_read = transport.read_async(&byte, 1);
+	require(unsupported_read.await_ready());
+	const auto unsupported = unsupported_read.await_resume();
+	require(!unsupported && unsupported.error().code == error_code::not_implemented);
+	{
+		auto operation = transport.write_async(&byte, 1);
+		require(!operation.await_ready());
+		require(!transport.write(&byte, 1));
+		HAL_UART_TxCpltCallback(&serial.handle());
+		const auto completed = operation.await_resume();
+		require(completed && *completed == 1);
+	}
+	const auto aborts_before_cancel = fake_tx_aborts;
+	{
+		auto abandoned = transport.write_async(&byte, 1);
+		require(!abandoned.await_ready());
+	}
+	require(fake_tx_aborts == aborts_before_cancel + 1);
+	fake_wait_hook = nullptr;
+	{
+		auto timeout = transport.write_async(&byte, 1);
+		require(!timeout.await_ready());
+		const auto failed = timeout.await_resume();
+		require(!failed && failed.error().code == error_code::timeout_error);
+	}
+	{
+		auto empty = transport.write_async(nullptr, 0);
+		require(empty.await_ready());
+	}
+	{
+		auto empty = transport.write_async(nullptr, 0);
+		require(empty.await_ready());
+		require(empty.await_resume() == 0);
+	}
 }

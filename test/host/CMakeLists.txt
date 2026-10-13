@@ -5,10 +5,21 @@ target_include_directories(host_headers INTERFACE
     "${PROJECT_SOURCE_DIR}/lib/expected/include"
 )
 
-add_executable(uart_test uart_test.cpp "${PROJECT_SOURCE_DIR}/src/drivers/uart.cpp")
+add_executable(uart_test uart_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/drivers/uart.cpp"
+    "${PROJECT_SOURCE_DIR}/src/drivers/serial_device.cpp"
+    "${PROJECT_SOURCE_DIR}/src/drivers/uart_serial_device.cpp")
 target_include_directories(uart_test BEFORE PRIVATE uart_fakes)
 target_link_libraries(uart_test PRIVATE host_headers)
 add_test(NAME uart_test COMMAND uart_test)
+
+add_executable(serial_device_test serial_device_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/drivers/serial_device.cpp")
+target_link_libraries(serial_device_test PRIVATE host_headers)
+if(MINGW)
+    target_link_options(serial_device_test PRIVATE -static-libgcc -static-libstdc++)
+endif()
+add_test(NAME serial_device_test COMMAND serial_device_test)
 
 add_executable(control_button_gesture_test control_button_gesture_test.cpp)
 target_link_libraries(control_button_gesture_test PRIVATE host_headers)
@@ -143,6 +154,8 @@ set(STM32CUBE_F4_ROOT "$ENV{STM32CUBE_F4_ROOT}" CACHE PATH "Path to STM32CubeF4 
 set(USB_TEST_ROOT "${STM32CUBE_F4_ROOT}/Middlewares/ST/STM32_USB_Device_Library")
 if(EXISTS "${USB_TEST_ROOT}/Class/CDC/Src/usbd_cdc.c")
     add_executable(usb_transport_test usb_transport_test.cpp
+        "${PROJECT_SOURCE_DIR}/src/drivers/serial_device.cpp"
+        "${PROJECT_SOURCE_DIR}/src/drivers/usb_cdc_serial_device.cpp"
         "${PROJECT_SOURCE_DIR}/src/drivers/usb_device.cpp"
         "${PROJECT_SOURCE_DIR}/src/drivers/usb_cdc.cpp"
         "${PROJECT_SOURCE_DIR}/src/drivers/usb_stm32.cpp"

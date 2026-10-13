@@ -10,6 +10,9 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     spi_device.cpp
     timer.cpp
     uart.cpp
+    serial_device.cpp
+    uart_serial_device.cpp
+    usb_cdc_serial_device.cpp
     usb_device.cpp
     usb_cdc.cpp
     usb_stm32.cpp

@@ -27,6 +27,10 @@ extern uint32_t usb_instance;
 #define RCC (&usb_rcc)
 #define USB_OTG_FS (&usb_instance)
 #define GPIO_PIN_11 (1U << 11)
+#define GPIO_PIN_8 (1U << 8)
+typedef enum { GPIO_PIN_RESET, GPIO_PIN_SET } GPIO_PinState;
+extern uint32_t usb_interrupt_context;
+#define __get_IPSR() (usb_interrupt_context)
 #define GPIO_PIN_12 (1U << 12)
 #define GPIO_MODE_INPUT 0U
 #define GPIO_MODE_AF_PP 2U
@@ -59,6 +63,7 @@ void HAL_NVIC_DisableIRQ(int);
 void HAL_NVIC_EnableIRQ(int);
 void HAL_NVIC_ClearPendingIRQ(int);
 void HAL_GPIO_Init(GPIO_TypeDef *, GPIO_InitTypeDef *);
+GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *, uint16_t);
 void HAL_GPIO_DeInit(GPIO_TypeDef *, uint32_t);
 uint32_t HAL_GetUIDw0(void);
 uint32_t HAL_GetUIDw1(void);

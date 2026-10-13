@@ -1,4 +1,5 @@
 #include "drivers/usb_cdc.h"
+#include "drivers/usb_cdc_serial_device.h"
 
 #include <algorithm>
 #include <cassert>
@@ -15,6 +16,21 @@ bool fail_start = false;
 int rx_arms = 0;
 int tx_submissions = 0;
 uint32_t rx_count = 0;
+uint32_t usb_interrupt_context = 0;
+bool vbus_level = false;
+usb_device *waiting_device = nullptr;
+
+status gpio::init()
+{
+    return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+extern "C" GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *, uint16_t)
+{
+    return vbus_level ? GPIO_PIN_SET : GPIO_PIN_RESET;
+}
 
 extern "C" void HAL_NVIC_SetPriority(int, uint32_t, uint32_t) {}
 
@@ -214,6 +230,22 @@ void receive(usb_device &device, uint8_t fill, uint32_t size)
 
 //////////////////////////////////////////////////////////////////////////
 
+void complete_write()
+{
+    auto &device = *waiting_device;
+    auto &pcd = device.pcd_handle();
+    const bool needs_zlp = pcd.IN_ep[1].xfer_len % 64 == 0;
+    usb_interrupt_context = 1;
+    assert(USBD_LL_DataInStage(&device.native_handle(), 1, pcd.IN_ep[1].xfer_buff) == USBD_OK);
+    if (needs_zlp)
+    {
+        assert(USBD_LL_DataInStage(&device.native_handle(), 1, nullptr) == USBD_OK);
+    }
+    usb_interrupt_context = 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 int main()
 {
     usb_device invalid{{}};
@@ -246,6 +278,39 @@ int main()
     assert(cable_attached && irq_enabled);
     enumerate(device);
     assert(serial.connected());
+    usb_cdc_serial_device adapter{serial};
+    serial_device &transport = adapter;
+    std::array<uint8_t, 4> adapter_bytes{};
+    assert(transport.read(adapter_bytes.data(), adapter_bytes.size()) == 0);
+    waiting_device = &device;
+    usb_wait_hook = complete_write;
+    assert(transport.write(adapter_bytes.data(), adapter_bytes.size()) == 4);
+    assert(usb_isr_notifications == 1);
+    usb_wait_hook = nullptr;
+    auto asynchronous = transport.write_async(adapter_bytes.data(), adapter_bytes.size());
+    assert(!asynchronous.await_ready());
+    assert(!transport.write(adapter_bytes.data(), 1));
+    complete_write();
+    assert(usb_notifications == 1);
+    assert(asynchronous.await_resume() == 4);
+    {
+        auto abandoned = transport.write_async(adapter_bytes.data(), 4);
+        assert(!abandoned.await_ready());
+    }
+    complete_write();
+    assert(usb_notifications == 0);
+    const auto timed_out = transport.write(adapter_bytes.data(), 4);
+    assert(!timed_out && timed_out.error().code == error_code::timeout_error);
+    complete_write();
+    assert(usb_notifications == 0);
+    assert(transport.write(nullptr, 0) == 0);
+    std::array<uint8_t, 300> long_write{};
+    usb_wait_hook = complete_write;
+    assert(transport.write(long_write.data(), long_write.size()) == 256);
+    usb_wait_hook = nullptr;
+    auto unsupported_read_async = transport.read_async(adapter_bytes.data(), adapter_bytes.size());
+    assert(unsupported_read_async.await_ready());
+    assert(unsupported_read_async.await_resume().error().code == error_code::not_implemented);
     second.stop();
     assert(irq_enabled && serial.connected());
     uint16_t length = 0;
@@ -253,7 +318,7 @@ int main()
     assert(length == 18 && descriptor[4] == 2 && descriptor[5] == 0 && descriptor[6] == 0);
     assert(descriptor[8] == 0x34 && descriptor[9] == 0x12);
     auto *configuration = static_cast<uint8_t *>(device.native_handle().pConfDesc);
-    assert(configuration[4] == 2 && (configuration[7] & 0x40) && configuration[8] == 0);
+    assert(configuration[4] == 2 && (configuration[7] & 0x40) && configuration[8] == 1);
     bool acm_interface_found = false;
     for (uint16_t offset = 0; offset < 67; offset += configuration[offset])
     {
@@ -313,6 +378,11 @@ int main()
     const auto before_reset = serial.session();
     enumerate(device);
     assert(serial.available() == 0 && serial.session() != before_reset);
+    const auto changed_connection = transport.read(adapter_bytes.data(), adapter_bytes.size());
+    assert(!changed_connection && changed_connection.error().code == error_code::not_ready);
+    receive(device, 0x73, 4);
+    assert(transport.read(adapter_bytes.data(), adapter_bytes.size()) == 4);
+    assert(adapter_bytes[0] == 0x73);
     assert(serial.write(buffer.data(), 3) == 3);
     receive(device, 0x22, 7);
     const auto old_session = serial.session();
@@ -344,6 +414,47 @@ int main()
     assert(serial.start());
     enumerate(device);
     serial.deinit();
+    usb_device sensed{{
+        .vendor_id = 0x1234,
+        .product_id = 0x5678,
+        .vbus = {GPIOA, GPIO_PIN_8}
+    }};
+    usb_cdc sensed_cdc{sensed};
+    usb_cdc_serial_device sensed_transport{sensed_cdc};
+    assert(sensed.init());
+    assert(sensed_cdc.init());
+    assert(sensed_transport.init());
+    assert(!cable_attached);
+    vbus_level = true;
+    assert(sensed_cdc.poll());
+    assert(cable_attached);
+    enumerate(sensed);
+    waiting_device = &sensed;
+    std::array<uint8_t, 64> packet{};
+    auto packet_write = sensed_transport.write_async(packet.data(), packet.size());
+    assert(!packet_write.await_ready());
+    usb_interrupt_context = 1;
+    assert(USBD_LL_DataInStage(&sensed.native_handle(), 1, packet.data()) == USBD_OK);
+    usb_interrupt_context = 0;
+    assert(usb_notifications == 0 && sensed_cdc.tx_busy());
+    usb_interrupt_context = 1;
+    assert(USBD_LL_DataInStage(&sensed.native_handle(), 1, nullptr) == USBD_OK);
+    usb_interrupt_context = 0;
+    assert(usb_notifications == 1 && packet_write.await_resume() == 64);
+    auto interrupted = sensed_transport.write_async(packet.data(), 4);
+    assert(!interrupted.await_ready());
+    vbus_level = false;
+    assert(!sensed_transport.read(packet.data(), packet.size()));
+    assert(!cable_attached && usb_notifications == 1);
+    assert(interrupted.await_resume().error().code == error_code::not_ready);
+    vbus_level = true;
+    assert(!sensed_transport.read(packet.data(), packet.size()));
+    enumerate(sensed);
+    assert(sensed_transport.read(packet.data(), packet.size()).error().code == error_code::not_ready);
+    assert(sensed_transport.read(packet.data(), packet.size()) == 0);
+    receive(sensed, 0x77, 4);
+    assert(sensed_transport.read(packet.data(), packet.size()) == 4 && packet[0] == 0x77);
+    sensed_cdc.deinit();
     assert(usb_critical_depth == 0);
     std::cout << "USB device/CDC with real ST core: lifecycle, descriptors, RX backpressure, TX copy/ZLP, reset/disconnect PASS\n";
 }

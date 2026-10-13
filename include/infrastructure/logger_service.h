@@ -3,7 +3,7 @@
 #include "infrastructure/supervisor.h"
 #include "application/command_reply.h"
 #include "application/firmware_log_sink.h"
-#include "drivers/uart.h"
+#include "drivers/serial_device.h"
 
 #include <atomic>
 #include <array>
@@ -14,7 +14,7 @@ class logger_service final : public command_reply_sink
 {
 public:
 	explicit logger_service(supervisor &monitor) : monitor_(monitor) {}
-	logger_service(uart &output, supervisor &monitor) : output_(&output), monitor_(monitor) {}
+	logger_service(serial_device &output, supervisor &monitor) : output_(&output), monitor_(monitor) {}
 
 public: // Common lifecycle
 	status start();
@@ -69,7 +69,7 @@ private: // Common task loop
 	void run();
 
 private: // State
-	uart *output_ = nullptr;
+	serial_device *output_ = nullptr;
 	supervisor &monitor_;
 	bool started_ = false;
 	QueueHandle_t inbox_ = nullptr;
@@ -79,4 +79,5 @@ private: // State
 	std::atomic<firmware_log_sink *> log_sink_{nullptr};
 	alignas(std::max_align_t) std::array<std::byte, 256> tx_frame_{};
 	bool tx_frame_busy_ = false;
+	std::coroutine_handle<tx_operation::promise_type> active_tx_{};
 };

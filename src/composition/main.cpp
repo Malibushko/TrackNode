@@ -6,6 +6,9 @@
 #include "platform/error.h"
 #include "application/node_controller.h"
 #include "drivers/devices/neo6m.h"
+#include "drivers/uart.h"
+#include "drivers/usb_cdc_serial_device.h"
+#include "infrastructure/console_service.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/sensor_service.h"
 #include "infrastructure/board_state_service.h"
@@ -102,14 +105,31 @@ status configure_watchdog(firmware_composition &application)
 
 //////////////////////////////////////////////////////////////////////////
 
-status configure_logger(firmware_composition &application)
+status configure_console(firmware_composition &application)
 {
 	if (!application.monitor)
 	{
 		return fail(component::service, error_code::invalid_config);
 	}
 
-	static logger_service logger{*application.monitor};
+	static usb_device device{usb_device_config{
+		.vendor_id = TRACK_NODE_USB_VID,
+		.product_id = TRACK_NODE_USB_PID,
+		.manufacturer = "TrackNode",
+		.product = "TrackNode Console",
+		.vbus = {GPIOA, GPIO_PIN_8}
+	}};
+	static usb_cdc cdc{device};
+	static usb_cdc_serial_device transport{cdc};
+	auto added = application.devices.add("usb_device", device, component_startup::initialize)
+		.and_then([&]{ return application.devices.add("usb_cdc", cdc, component_startup::initialize); })
+		.and_then([&]{ return application.devices.add("console_transport", transport, component_startup::initialize); });
+	if (!added)
+	{
+		return added;
+	}
+
+	static logger_service logger{transport, *application.monitor};
 
 	if (auto added = application.services.add(service_id::logger, logger); !added)
 	{
@@ -117,8 +137,8 @@ status configure_logger(firmware_composition &application)
 	}
 
 	application.logger = &logger;
-
-	return {};
+	static console_service console{transport, application.commands, logger, *application.monitor};
+	return application.services.add(service_id::console, console, {service_id::sensor});
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -456,7 +476,7 @@ int main()
 
 	auto configured = configure_telemetry_journal(application)
 	    .and_then([&]{ return configure_watchdog(application); })
-	    .and_then([&]{ return configure_logger(application); })
+	    .and_then([&]{ return configure_console(application); })
 	    .and_then([&]{ return configure_sensors(application); })
 	    .and_then([&]{ return configure_indicator(application); })
 	    .and_then([&]{ return configure_gnss(application); })

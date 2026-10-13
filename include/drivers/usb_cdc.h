@@ -20,11 +20,13 @@ public:
 
 	status start();
 	void stop();
+	status poll();
 	[[nodiscard]] bool connected() const;
 
 public:
 	result<std::size_t> read(std::uint8_t *data, std::size_t size);
-	result<std::size_t> write(const std::uint8_t *data, std::size_t size);
+	result<std::size_t> write(const std::uint8_t *data, std::size_t size, TaskHandle_t waiter = nullptr);
+	void clear_write_waiter(TaskHandle_t waiter);
 	[[nodiscard]] std::size_t available() const;
 	[[nodiscard]] bool tx_busy() const;
 	[[nodiscard]] std::uint32_t session() const;
@@ -36,6 +38,7 @@ private:
 	static std::int8_t on_receive(std::uint8_t *data, std::uint32_t *size);
 	static std::int8_t on_transmitted(std::uint8_t *, std::uint32_t *, std::uint8_t);
 	void reset_session();
+	void notify_write_waiter();
 	void arm_receive();
 
 private:
@@ -55,4 +58,5 @@ private:
 	bool configured_ = false;
 	bool rx_armed_ = false;
 	bool tx_busy_ = false;
+	TaskHandle_t write_waiter_ = nullptr;
 };
