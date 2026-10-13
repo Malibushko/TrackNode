@@ -42,6 +42,7 @@ if(CMAKE_CROSSCOMPILING)
     add_subdirectory(src)
     include(cmake/stm32cube_sources.cmake)
     include(cmake/vendor_sources.cmake)
+    include(cmake/usb_device.cmake)
 
     target_include_directories(${TRACK_NODE_TARGET} PRIVATE ${TRACK_NODE_INCLUDE_DIRECTORIES})
     target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE ${TRACK_NODE_COMPILE_DEFINITIONS})

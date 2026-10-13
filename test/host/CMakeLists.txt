@@ -138,3 +138,28 @@ if(MINGW)
     target_link_options(telemetry_history_test PRIVATE -static-libgcc -static-libstdc++)
 endif()
 target_include_directories(bluetooth_service_test BEFORE PRIVATE history_fakes)
+
+set(STM32CUBE_F4_ROOT "$ENV{STM32CUBE_F4_ROOT}" CACHE PATH "Path to STM32CubeF4 package root")
+set(USB_TEST_ROOT "${STM32CUBE_F4_ROOT}/Middlewares/ST/STM32_USB_Device_Library")
+if(EXISTS "${USB_TEST_ROOT}/Class/CDC/Src/usbd_cdc.c")
+    add_executable(usb_transport_test usb_transport_test.cpp
+        "${PROJECT_SOURCE_DIR}/src/drivers/usb_device.cpp"
+        "${PROJECT_SOURCE_DIR}/src/drivers/usb_cdc.cpp"
+        "${PROJECT_SOURCE_DIR}/src/drivers/usb_stm32.cpp"
+        "${USB_TEST_ROOT}/Core/Src/usbd_core.c"
+        "${USB_TEST_ROOT}/Core/Src/usbd_ctlreq.c"
+        "${USB_TEST_ROOT}/Core/Src/usbd_ioreq.c"
+        "${USB_TEST_ROOT}/Class/CDC/Src/usbd_cdc.c"
+    )
+    target_include_directories(usb_transport_test BEFORE PRIVATE usb_fakes
+        "${USB_TEST_ROOT}/Core/Inc"
+        "${USB_TEST_ROOT}/Class/CDC/Inc"
+    )
+    target_link_libraries(usb_transport_test PRIVATE host_headers)
+    if(MINGW)
+        target_link_options(usb_transport_test PRIVATE -static-libgcc -static-libstdc++)
+    endif()
+    add_test(NAME usb_transport_test COMMAND usb_transport_test)
+else()
+    message(STATUS "USB integration test needs STM32CUBE_F4_ROOT with USB Device middleware")
+endif()

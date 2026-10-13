@@ -1,6 +1,6 @@
 set(HAL_MODULES
     adc adc_ex cortex dma dma_ex flash flash_ex gpio i2c i2c_ex iwdg
-    pwr pwr_ex rcc rcc_ex spi tim tim_ex uart
+    pcd pcd_ex pwr pwr_ex rcc rcc_ex spi tim tim_ex uart
 )
 
 target_sources(${TRACK_NODE_TARGET} PRIVATE

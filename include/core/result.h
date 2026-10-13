@@ -27,7 +27,8 @@ enum class component
 	storage,
 	watchdog,
 	uart_device,
-	service
+	service,
+	usb
 };
 
 enum class error_code
