@@ -21,6 +21,10 @@ if(MINGW)
 endif()
 add_test(NAME serial_device_test COMMAND serial_device_test)
 
+add_executable(bootloader_request_test bootloader_request_test.cpp)
+target_link_libraries(bootloader_request_test PRIVATE host_headers)
+add_test(NAME bootloader_request_test COMMAND bootloader_request_test)
+
 add_executable(control_button_gesture_test control_button_gesture_test.cpp)
 target_link_libraries(control_button_gesture_test PRIVATE host_headers)
 add_test(NAME control_button_gesture_test COMMAND control_button_gesture_test)

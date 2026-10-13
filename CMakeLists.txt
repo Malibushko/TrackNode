@@ -100,6 +100,15 @@ if(CMAKE_CROSSCOMPILING)
             USES_TERMINAL
             VERBATIM
         )
+        add_custom_target(flash-usb
+            COMMAND "${CMAKE_COMMAND}"
+                    "-DPROGRAMMER=${TRACK_NODE_PROGRAMMER_CLI}"
+                    "-DFIRMWARE=$<TARGET_FILE:${TRACK_NODE_TARGET}>"
+                    -P "${PROJECT_SOURCE_DIR}/cmake/flash_usb.cmake"
+            DEPENDS ${TRACK_NODE_TARGET}
+            USES_TERMINAL
+            VERBATIM
+        )
     else()
         message(STATUS "STM32_Programmer_CLI not found; flash target unavailable")
     endif()

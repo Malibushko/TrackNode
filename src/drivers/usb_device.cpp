@@ -199,7 +199,10 @@ status usb_device::poll()
 	{
 		return {};
 	}
-	return set_vbus_present(HAL_GPIO_ReadPin(config_.vbus.port, config_.vbus.mask) == GPIO_PIN_SET);
+	taskENTER_CRITICAL();
+	const auto changed = set_vbus_present(HAL_GPIO_ReadPin(config_.vbus.port, config_.vbus.mask) == GPIO_PIN_SET);
+	taskEXIT_CRITICAL();
+	return changed;
 }
 
 //////////////////////////////////////////////////////////////////////////

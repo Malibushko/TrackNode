@@ -46,6 +46,7 @@ private: // Application behavior
 	void handle_command(command_request request);
 	status reply(const char *format, ...);
 	void handle_ping();
+	void handle_bootload();
 	void handle_read_temperature();
 	void handle_read_pressure();
 	void handle_read_gnss();

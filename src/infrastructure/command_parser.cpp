@@ -63,6 +63,14 @@ tl::expected<command, command_parse_error> parse_command(std::string_view line)
 {
 	const auto verb = next_token(line);
 	const auto noun = next_token(line);
+	if (matches(verb, "BOOTLOAD"))
+	{
+		if (!noun.empty())
+		{
+			return tl::make_unexpected(command_parse_error::invalid_syntax);
+		}
+		return command{ command_type::bootload };
+	}
 
 	if (matches(verb, "PING"))
 	{

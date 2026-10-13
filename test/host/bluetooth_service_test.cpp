@@ -161,6 +161,7 @@ int main()
 	backend.events.push_back(receive("BAD", 10));
 	backend.events.push_back(receive("PING\nPING", 10));
 	backend.events.push_back(receive("PING", 9));
+	backend.events.push_back(receive("BOOTLOAD", 10));
 	backend.events.push_back(bluetooth_event{
 		.type = bluetooth_event::kind::link_changed,
 		.link = {true, true, 20, 11}
@@ -192,9 +193,11 @@ int main()
 	{
 	}
 
-	require(commands.received.size() == 1);
+	require(commands.received.size() == 2);
 	require(commands.received[0].value.type == command_type::ping);
 	require(commands.received[0].session == 10 && commands.received[0].reply_to == &service);
+	require(commands.received[1].value.type == command_type::bootload);
+	require(commands.received[1].session == 10 && commands.received[1].reply_to == &service);
 	require(backend.initialized == 2 && backend.advertisements == 2);
 	std::string text;
 	for (std::size_t index = 0; index < backend.chunks.size(); ++index)

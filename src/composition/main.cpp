@@ -4,6 +4,7 @@
 #include "composition/track_node.h"
 #include "board/clock.h"
 #include "platform/error.h"
+#include "platform/hardware.h"
 #include "application/node_controller.h"
 #include "drivers/devices/neo6m.h"
 #include "drivers/uart.h"
@@ -467,6 +468,7 @@ status configure_runtime(firmware_composition &application)
 
 int main()
 {
+	hardware::process_pending_requests();
 	if (!initialize_platform())
 	{
 		panic();

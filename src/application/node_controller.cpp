@@ -1,4 +1,5 @@
 #include "application/node_controller.h"
+#include "platform/hardware.h"
 #include "common/common.h"
 #ifndef NO_STORAGE
 #include "application/log_record.h"
@@ -269,6 +270,10 @@ void node_controller::handle_command(command_request request)
 			handle_ping();
 			break;
 
+		case command_type::bootload:
+			handle_bootload();
+			break;
+
 		case command_type::read_temperature:
 			handle_read_temperature();
 			break;
@@ -322,6 +327,13 @@ void node_controller::handle_ping()
 	}
 
 	(void)reply("PONG\r\n");
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_bootload()
+{
+	hardware::request_bootloader();
 }
 
 //////////////////////////////////////////////////////////////////////////

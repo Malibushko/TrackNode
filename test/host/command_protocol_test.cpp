@@ -9,6 +9,8 @@ int main()
 {
 	auto ping = parse_command("  ping  ");
 	assert(ping && ping->type == command_type::ping);
+	assert(parse_command(" bootload \t")->type == command_type::bootload);
+	assert(parse_command("BOOTLOAD extra").error() == command_parse_error::invalid_syntax);
 	assert(parse_command("GET TEMP")->type == command_type::read_temperature);
 	assert(parse_command("get pressure")->type == command_type::read_pressure);
 	assert(parse_command("get gnss")->type == command_type::read_gnss);
