@@ -8,6 +8,23 @@ void Check(bool condition)
     if (!condition) throw new Exception($"Check {checks} failed");
 }
 var now = DateTimeOffset.UtcNow;
+var batteryChart = new BatteryChartData();
+var chartBattery = new BatteryMeasurement(3, 70, 3970, 3300, 2463, 1500, 2450, 2470, 100);
+Check(batteryChart.Add(chartBattery, now));
+Check(batteryChart.Points[0].Time == now.AddMilliseconds(-100));
+Check(!batteryChart.Add(chartBattery with { AgeMs = 200 }, now.AddMilliseconds(100)));
+Check(batteryChart.Add(chartBattery with { BatteryMv = 3980 }, now.AddSeconds(5)));
+Check(batteryChart.Break(now.AddSeconds(6)));
+Check(!batteryChart.Break(now.AddSeconds(7)));
+Check(batteryChart.Add(chartBattery with { Flags = 1 }, now.AddSeconds(10)));
+Check(batteryChart.Select(TimeSpan.FromSeconds(3)).Count == 1);
+Check(batteryChart.Export().Contains("3970,70,1") && batteryChart.Export().Contains("3970,70,0"));
+Check(batteryChart.Export().Contains(",,,"));
+batteryChart.Clear();
+Check(batteryChart.Points.Count == 0);
+for (int index = 0; index <= BatteryChartData.Capacity; ++index)
+    batteryChart.Add(chartBattery, now.AddSeconds(index * 5));
+Check(batteryChart.Points.Count == BatteryChartData.Capacity);
 var batteryBytes = new byte[] { 1, 3, 72, 0, 0x8d, 0x0f, 0xe4, 0x0c, 0xa6, 9, 0xdc, 5, 0x9c, 9, 0xb0, 9, 100, 0, 0, 0 };
 var battery = BatteryMeasurement.Decode(batteryBytes);
 Check(battery.Valid && battery.Level == 72 && battery.UsbPresent && battery.BatteryMv == 3981 && battery.SupplyMv == 3300);

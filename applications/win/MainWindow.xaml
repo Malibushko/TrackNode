@@ -188,6 +188,34 @@
     </Border>
    </Grid>
     </TabItem>
+    <TabItem Header="Battery chart">
+     <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <StackPanel Margin="0,0,0,14">
+       <TextBlock Text="BATTERY OVER TIME" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}"/>
+       <TextBlock Text="Voltage and estimated charge" FontSize="23" FontWeight="SemiBold" Margin="0,10,0,8"/>
+       <TextBlock Text="Live measurements collected while this client is open. USB presence does not confirm charging." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,14"/>
+       <WrapPanel>
+        <Button Content="Last 15 min" Tag="15" Click="BatteryRangeClicked" Padding="10,6"/>
+        <Button Content="Last hour" Tag="60" Click="BatteryRangeClicked" Padding="10,6"/>
+        <Button Content="All" Tag="0" Click="BatteryRangeClicked" Padding="10,6"/>
+        <Button Content="Export CSV" Click="ExportBatteryClicked" Padding="10,6"/>
+        <Button Content="Clear" Click="ClearBatteryClicked" Padding="10,6"/>
+       </WrapPanel>
+      </StackPanel>
+      <Border Grid.Row="1" Style="{StaticResource Panel}" Padding="18,14">
+       <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <WrapPanel>
+         <TextBlock Text="● Voltage · V (left)" Foreground="#40E0D0" Margin="0,0,20,0"/>
+         <TextBlock Text="┄ Level · % (right)" Foreground="#F4A460" Margin="0,0,20,0"/>
+         <TextBlock Text="▰ USB present" Foreground="#67E8C2"/>
+        </WrapPanel>
+        <local:BatteryChart x:Name="BatteryPlot" Grid.Row="1" Margin="0,10,0,0"/>
+       </Grid>
+      </Border>
+      <TextBlock Grid.Row="2" Text="{Binding BatteryChartDetails}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap"/>
+     </Grid>
+    </TabItem>
     <TabItem Header="History charts">
      <Grid>
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="14"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>

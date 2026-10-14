@@ -49,6 +49,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private SavedHistory? chartHistory;
     private int chartLimit;
     private string? chartPath;
+    private readonly BatteryChartData batteryChart = new();
+    private TimeSpan? batteryRange = TimeSpan.FromMinutes(15);
+    private ulong? batteryDevice;
+    public string BatteryChartDetails { get; private set; } = "No battery measurements yet · hover to inspect · export before closing";
     private static string HistoryDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrackNode", "History");
     public string ChartDetails { get; private set; } = "No saved history. Connect to the node and sync, or open a previous export.";
     public ObservableCollection<NearbyDevice> Devices { get; } = [];
@@ -228,6 +232,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             batteryStatus = BatteryMeasurement.Decode(bytes);
             batteryReceived = DateTimeOffset.UtcNow;
+            if (batteryChart.Add(batteryStatus, batteryReceived)) UpdateBatteryChart();
             UpdateBatteryReadout();
             Add("TLM", batteryStatus.Valid
                 ? $"Battery {batteryStatus.BatteryMv} mV (filtered) · ADC {batteryStatus.MinimumRaw}–{batteryStatus.MaximumRaw} · age {batteryStatus.AgeMs} ms"
@@ -402,6 +407,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (DeviceList.SelectedItem is not NearbyDevice selected || !CanConnect) return;
         StopScan();
         busy = true;
+        if (batteryDevice != selected.Address)
+        {
+            batteryChart.Clear();
+            batteryDevice = selected.Address;
+            UpdateBatteryChart();
+        }
         ConnectionLabel = "Connecting…";
         LinkDetails = selected.AddressText;
         framer.Reset();
@@ -428,6 +439,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Disconnect()
     {
+        if (batteryChart.Break(DateTimeOffset.UtcNow)) UpdateBatteryChart();
         typedTemperature = null;
         batteryStatus = null;
         batteryLevel = null;
@@ -545,6 +557,40 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void FilterChanged(object sender, RoutedEventArgs args) => JournalView?.Refresh();
     private void ClearLog(object sender, RoutedEventArgs args) => Journal.Clear();
 
+    private void UpdateBatteryChart()
+    {
+        var points = batteryChart.Select(batteryRange);
+        BatteryPlot.SetPoints(points);
+        var count = batteryChart.Points.Count(point => point.Millivolts.HasValue);
+        BatteryChartDetails = $"{count:N0} measurements collected · {(batteryRange is null ? "all" : $"last {batteryRange.Value.TotalMinutes:0} min")} · filtered voltage · gaps are not interpolated · export before closing";
+    }
+
+    private void BatteryRangeClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is Button { Tag: string tag } && int.TryParse(tag, out var minutes))
+        {
+            batteryRange = minutes == 0 ? null : TimeSpan.FromMinutes(minutes);
+            UpdateBatteryChart();
+            Refresh();
+        }
+    }
+
+    private void ClearBatteryClicked(object sender, RoutedEventArgs args)
+    {
+        batteryChart.Clear();
+        UpdateBatteryChart();
+        Refresh();
+    }
+
+    private async void ExportBatteryClicked(object sender, RoutedEventArgs args)
+    {
+        var dialog = new SaveFileDialog { Filter = "Battery measurements (*.csv)|*.csv", FileName = $"tracknode-battery-{DateTime.Now:yyyyMMdd-HHmmss}.csv" };
+        if (dialog.ShowDialog(this) != true) return;
+        var csv = batteryChart.Export();
+        try { await File.WriteAllTextAsync(dialog.FileName, csv, new UTF8Encoding(true)); Add("SYSTEM", "Battery chart exported: " + dialog.FileName); }
+        catch (Exception error) { Add("ERROR", error.Message); }
+    }
+
     private async void ExportLog(object sender, RoutedEventArgs args)
     {
         var dialog = new SaveFileDialog { Filter = "Tab-separated journal (*.tsv)|*.tsv", FileName = $"tracknode-{DateTime.Now:yyyyMMdd-HHmmss}.tsv" };
@@ -557,6 +603,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void TimerTick(object? sender, EventArgs args)
     {
         UpdateBatteryReadout();
+        if (batteryStatus is not null && DateTimeOffset.UtcNow - batteryReceived >= TimeSpan.FromSeconds(15) &&
+            batteryChart.Break(DateTimeOffset.UtcNow)) UpdateBatteryChart();
         if (scanning && DateTimeOffset.UtcNow - scanStarted > TimeSpan.FromSeconds(15)) StopScan();
         if (Connected && framer.IsExpired(DateTimeOffset.UtcNow))
         {
@@ -607,6 +655,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             chartPath = "DEMO · simulated overnight measurements";
             UpdateCharts();
+            var batteryStart = DateTimeOffset.UtcNow.AddMinutes(-10);
+            for (int index = 0; index < 120; ++index)
+            {
+                var mv = (ushort)(index < 80 ? 3850 + index * 2 : 4010 - (index - 80) / 2);
+                batteryChart.Add(new BatteryMeasurement((byte)(index < 80 ? 3 : 1), (byte)(55 + Math.Min(index, 80) / 3),
+                    mv, 3300, 2450, 1500, 2440, 2460, 0), batteryStart.AddSeconds(index * 5));
+            }
+            UpdateBatteryChart();
         }
         else if (Directory.Exists(HistoryDirectory))
         {
@@ -615,7 +671,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         Refresh();
         var argv = Environment.GetCommandLineArgs();
-        if (argv.Contains("--charts")) WorkbenchTabs.SelectedIndex = 1;
+        if (argv.Contains("--charts")) WorkbenchTabs.SelectedIndex = 2;
+        if (argv.Contains("--battery-chart")) WorkbenchTabs.SelectedIndex = 1;
         var snapshotIndex = Array.IndexOf(argv, "--snapshot");
         if (snapshotIndex >= 0 && snapshotIndex + 1 < argv.Length)
         {
