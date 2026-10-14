@@ -8,6 +8,24 @@ void Check(bool condition)
     if (!condition) throw new Exception($"Check {checks} failed");
 }
 var now = DateTimeOffset.UtcNow;
+var batteryBytes = new byte[] { 1, 3, 72, 0, 0x8d, 0x0f, 0xe4, 0x0c, 0xa6, 9, 0xdc, 5, 0x9c, 9, 0xb0, 9, 100, 0, 0, 0 };
+var battery = BatteryMeasurement.Decode(batteryBytes);
+Check(battery.Valid && battery.Level == 72 && battery.UsbPresent && battery.BatteryMv == 3981 && battery.SupplyMv == 3300);
+Check(battery.Raw == 2470 && battery.MinimumRaw == 2460 && battery.MaximumRaw == 2480 && battery.AgeMs == 100);
+Check(BatteryMeasurement.DecodeLevel(new byte[] { 100 }) == 100);
+foreach (var invalidBattery in new[] { new byte[19], new byte[] { 101 }, batteryBytes.Select((value, index) => index == 3 ? (byte)1 : value).ToArray() })
+{
+    try { BatteryMeasurement.Decode(invalidBattery); Check(false); }
+    catch (InvalidDataException) { Check(true); }
+}
+var unavailableBattery = new byte[20];
+unavailableBattery[0] = 1;
+Check(!BatteryMeasurement.Decode(unavailableBattery).Valid);
+var batteryReply = new ReplyTracker("get battery");
+Check(!batteryReply.Accept("battery_mv=3981 level_percent_estimate=72 usb_present=0 low_battery=0 age=100 ms"));
+Check(!batteryReply.Accept("L,12,interleaved log"));
+Check(batteryReply.Accept("supply_mv=3300 battery_raw=2470 vrefint_raw=1500 min_raw=2460 max_raw=2480"));
+Check(batteryReply.Lines.Count == 2);
 var bytes = Encoding.ASCII.GetBytes("PONG\r\nL,123,a,b\r\nT,1,23.40,100000,,,0,,,0,,0,\r\n");
 for (var split = 0; split <= bytes.Length; ++split)
 {

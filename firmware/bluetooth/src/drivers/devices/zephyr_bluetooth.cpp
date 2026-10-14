@@ -325,6 +325,14 @@ status zephyr_bluetooth::update_measurement(const bluetooth_measurement::snapsho
 void zephyr_bluetooth::reset_measurement()
 {
 	gatt_.reset_measurement();
+	gatt_.reset_battery();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status zephyr_bluetooth::update_battery(const bluetooth_battery::snapshot &value)
+{
+	return gatt_.update_battery(value);
 }
 
 //////////////////////////////////////////////////////////////////////////

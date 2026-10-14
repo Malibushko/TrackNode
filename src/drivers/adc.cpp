@@ -16,16 +16,7 @@ status adc::init()
 
 	if (internal_vref && config_.sample_time != ADC_SAMPLETIME_480CYCLES)
 	{
-		// F411 requires >=10 us; 480 cycles satisfies this at ADC clocks <=36 MHz.
 		return fail(component::adc, error_code::invalid_config);
-	}
-	if (!internal_vref)
-	{
-		gpio_config pin_config{};
-		pin_config.pin = config_.pin;
-		pin_config.mode = GPIO_MODE_ANALOG;
-		gpio configured_pin{ pin_config };
-		if (auto configured = configured_pin.init(); !configured) return configured;
 	}
 
 	__HAL_RCC_ADC1_CLK_ENABLE();
@@ -47,16 +38,50 @@ status adc::init()
 		return status;
 	}
 
-	ADC_ChannelConfTypeDef channel{};
-	channel.Channel = config_.channel;
-	channel.Rank = 1;
-	channel.SamplingTime = config_.sample_time;
+	initialized_ = true;
+	status = select_channel(config_);
+	initialized_ = static_cast<bool>(status);
+	return status;
+}
 
-	status = from_hal(component::adc, HAL_ADC_ConfigChannel(&handle_, &channel));
+//////////////////////////////////////////////////////////////////////////
+
+status adc::select_channel(adc_config config)
+{
+	if (!initialized_)
+	{
+		return fail(component::adc, error_code::not_initialized);
+	}
+
+	const bool internal_vref = config.channel == ADC_CHANNEL_VREFINT;
+	const bool valid_channel = internal_vref || config.channel <= ADC_CHANNEL_15;
+	const bool valid_sample_time = IS_ADC_SAMPLE_TIME(config.sample_time) &&
+	    (!internal_vref || config.sample_time == ADC_SAMPLETIME_480CYCLES);
+	if (!valid_channel || !valid_sample_time)
+	{
+		return fail(component::adc, error_code::invalid_config);
+	}
+
+	if (!internal_vref)
+	{
+		gpio configured_pin{gpio_config{
+			.pin = config.pin,
+			.mode = GPIO_MODE_ANALOG
+		}};
+		if (auto configured = configured_pin.init(); !configured)
+		{
+			return configured;
+		}
+	}
+
+	ADC_ChannelConfTypeDef channel{};
+	channel.Channel = config.channel;
+	channel.Rank = 1;
+	channel.SamplingTime = config.sample_time;
+
+	auto status = from_hal(component::adc, HAL_ADC_ConfigChannel(&handle_, &channel));
 	if (status && internal_vref)
 	{
-		// HAL enables TSVREFE for VREFINT but only delays for the temperature channel.
-		// Wait >=10 us without HAL_Delay (HAL ticks may differ under tickless idle).
 		for (std::uint32_t remaining = SystemCoreClock / 100000u + 1u;
 		     remaining != 0; --remaining)
 		{
@@ -64,7 +89,10 @@ status adc::init()
 		}
 	}
 
-	initialized_ = static_cast<bool>(status);
+	if (status)
+	{
+		config_ = config;
+	}
 
 	return status;
 }

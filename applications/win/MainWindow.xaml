@@ -112,7 +112,7 @@
     <TabItem Header="Workbench">
    <Grid>
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-    <UniformGrid Columns="4" Margin="0,0,-10,18">
+    <UniformGrid Columns="5" Margin="0,0,-10,18">
      <Border Style="{StaticResource Panel}" Margin="0,0,10,0" Padding="16">
       <StackPanel><TextBlock Text="TEMPERATURE" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding Temperature}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="BMP280 · °C" FontSize="11" Foreground="{StaticResource MutedBrush}"/></StackPanel>
      </Border>
@@ -120,7 +120,10 @@
       <StackPanel><TextBlock Text="PRESSURE" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding Pressure}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="BMP280 · hPa" FontSize="11" Foreground="{StaticResource MutedBrush}"/></StackPanel>
      </Border>
      <Border Style="{StaticResource Panel}" Margin="0,0,10,0" Padding="16">
-      <StackPanel><TextBlock Text="MCU SUPPLY" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding Voltage}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="VREFINT · V, not battery %" FontSize="10" Foreground="{StaticResource MutedBrush}"/></StackPanel>
+      <StackPanel><TextBlock Text="MCU SUPPLY" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding Voltage}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="VREFINT · V" FontSize="10" Foreground="{StaticResource MutedBrush}"/></StackPanel>
+     </Border>
+     <Border Style="{StaticResource Panel}" Margin="0,0,10,0" Padding="16">
+      <StackPanel><TextBlock Text="BATTERY" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding Battery}" FontSize="24" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="{Binding BatteryDetails}" FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/></StackPanel>
      </Border>
      <Border Style="{StaticResource Panel}" Margin="0,0,10,0" Padding="16">
       <StackPanel><TextBlock Text="GNSS" FontSize="10" Foreground="{StaticResource MutedBrush}"/><TextBlock Text="{Binding GnssStatus}" FontSize="26" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="{Binding GnssDetails}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/></StackPanel>
@@ -134,6 +137,7 @@
        <Button Content="Temperature" Tag="GET TEMP" Click="QuickCommand"/>
        <Button Content="Pressure" Tag="GET PRESSURE" Click="QuickCommand"/>
        <Button Content="Supply" Tag="GET VOLTAGE" Click="QuickCommand"/>
+       <Button Content="Battery" Tag="GET BATTERY" Click="QuickCommand"/>
        <Button Content="GNSS" Tag="GET GNSS" Click="QuickCommand"/>
        <Button Content="Low power" Tag="SET POWER_MODE LOW" Click="QuickCommand"/>
        <Button Content="High power" Tag="SET POWER_MODE HIGH" Click="QuickCommand"/>

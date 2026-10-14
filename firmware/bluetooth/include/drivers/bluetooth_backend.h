@@ -4,6 +4,7 @@
 #include "core/result.h"
 #include "common/bluetooth_types.h"
 #include "drivers/protocols/bluetooth_measurement.h"
+#include "drivers/protocols/bluetooth_battery.h"
 
 namespace ble
 {
@@ -26,6 +27,10 @@ public:
 
 	virtual status update_measurement(const bluetooth_measurement::snapshot &value) = 0;
 	virtual void reset_measurement() = 0;
+	virtual status update_battery(const bluetooth_battery::snapshot &)
+	{
+		return fail(component::bluetooth, error_code::not_implemented);
+	}
 
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
 };

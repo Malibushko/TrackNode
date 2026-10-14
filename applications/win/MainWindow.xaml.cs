@@ -42,6 +42,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double? typedPressure;
     private MeasurementStatus? measurementStatus;
     private DateTimeOffset statusReceived;
+    private BatteryMeasurement? batteryStatus;
+    private DateTimeOffset batteryReceived;
+    private byte? batteryLevel;
+    private DateTimeOffset batteryLevelReceived;
     private SavedHistory? chartHistory;
     private int chartLimit;
     private string? chartPath;
@@ -59,6 +63,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string Temperature { get; private set; } = "—";
     public string Pressure { get; private set; } = "—";
     public string Voltage { get; private set; } = "—";
+    public string Battery { get; private set; } = "—";
+    public string BatteryDetails { get; private set; } = "Awaiting battery data";
     public string GnssStatus { get; private set; } = "—";
     public string GnssDetails { get; private set; } = "Awaiting data";
     public string SampleAge => !demo && measurementStatus is not null ?
@@ -218,7 +224,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ReceiveMeasurement(Guid uuid, byte[] bytes)
     {
-        if (uuid == Measurements.TemperatureUuid) typedTemperature = Measurements.Temperature(bytes);
+        if (uuid == BatteryCharacteristics.StatusUuid)
+        {
+            batteryStatus = BatteryMeasurement.Decode(bytes);
+            batteryReceived = DateTimeOffset.UtcNow;
+            UpdateBatteryReadout();
+            Add("TLM", batteryStatus.Valid
+                ? $"Battery {batteryStatus.BatteryMv} mV (filtered) · ADC {batteryStatus.MinimumRaw}–{batteryStatus.MaximumRaw} · age {batteryStatus.AgeMs} ms"
+                : $"Battery unavailable · age {batteryStatus.AgeMs} ms");
+        }
+        else if (uuid == BatteryCharacteristics.LevelUuid)
+        {
+            batteryLevel = BatteryMeasurement.DecodeLevel(bytes);
+            batteryLevelReceived = DateTimeOffset.UtcNow;
+            UpdateBatteryReadout();
+        }
+        else if (uuid == Measurements.TemperatureUuid) typedTemperature = Measurements.Temperature(bytes);
         else if (uuid == Measurements.PressureUuid) typedPressure = Measurements.Pressure(bytes);
         else if (uuid == Measurements.StatusUuid)
         {
@@ -241,6 +262,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Refresh();
     }
 
+    private void UpdateBatteryReadout()
+    {
+        if (batteryStatus is not null)
+        {
+            var age = batteryStatus.AgeMs / 1000.0 + Math.Max(0, (DateTimeOffset.UtcNow - batteryReceived).TotalSeconds);
+            if (!batteryStatus.Valid || age >= 15)
+            {
+                Battery = "—";
+                BatteryDetails = "Unavailable / stale";
+                return;
+            }
+            Battery = (batteryStatus.BatteryMv / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + " V";
+            Voltage = (batteryStatus.SupplyMv / 1000.0).ToString("F3", CultureInfo.InvariantCulture);
+            BatteryDetails = $"≈{batteryStatus.Level}% · {(batteryStatus.UsbPresent ? "USB present" : "Battery power")}\nADC {batteryStatus.MinimumRaw}–{batteryStatus.MaximumRaw} · {age:F1} s";
+        }
+        else if (batteryLevel.HasValue)
+        {
+            var stale = DateTimeOffset.UtcNow - batteryLevelReceived >= TimeSpan.FromSeconds(15);
+            Battery = stale ? "—" : $"≈{batteryLevel}%";
+            BatteryDetails = stale ? "Unavailable / stale" : "Battery Level · voltage unavailable";
+        }
+    }
+
     private void UpdateReadout(string line)
     {
         if (demo && line.StartsWith("GNSS seq=", StringComparison.Ordinal))
@@ -250,6 +294,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         var voltage = Regex.Match(line, @"^supply_mv=(\d+)");
         if (voltage.Success && double.TryParse(voltage.Groups[1].Value, out var mv)) Voltage = (mv / 1000).ToString("F3", CultureInfo.InvariantCulture);
+        var battery = Regex.Match(line, @"^battery_mv=(\d+) level_percent_estimate=(\d+) usb_present=([01]) low_battery=([01]) age=(\d+) ms$");
+        if (battery.Success && ushort.TryParse(battery.Groups[1].Value, out var batteryMv) &&
+            byte.TryParse(battery.Groups[2].Value, out var level) && level <= 100)
+        {
+            Battery = (batteryMv / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + " V";
+            BatteryDetails = $"≈{level}% · {(battery.Groups[3].Value == "1" ? "USB present" : "Battery power")} · command";
+        }
+        if (line == "ERR BATTERY_UNAVAILABLE")
+        {
+            Battery = "—";
+            BatteryDetails = "Battery unavailable";
+        }
         var temperature = Regex.Match(line, @"^Temperature = (-?[\d.]+)");
         if (temperature.Success && demo) Temperature = temperature.Groups[1].Value;
         var pressure = Regex.Match(line, @"^Pressure = ([\d.]+)");
@@ -273,12 +329,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 "GET TEMP" => "Temperature = 23.42 C (age=180 ms, seq=12)",
                 "GET PRESSURE" => "Pressure = 100812.00 Pa (age=180 ms, seq=12)",
                 "GET VOLTAGE" => "supply_mv=3298 low_voltage=0 vrefint_raw=1502 age=100 ms",
+                "GET BATTERY" => "battery_mv=3981 level_percent_estimate=72 usb_present=0 low_battery=0 age=100 ms\nsupply_mv=3298 battery_raw=2471 vrefint_raw=1502 min_raw=2468 max_raw=2475",
                 "SET LOG_STREAM ON" => "OK LOG_STREAM ON",
                 "SET LOG_STREAM OFF" => "OK LOG_STREAM OFF",
                 _ => "ERR DEMO_COMMAND_NOT_SIMULATED"
             };
-            ReceiveLine(response);
-            return [response];
+            var lines = response.Split('\n');
+            foreach (var line in lines) ReceiveLine(line);
+            return lines;
         }
         replyTracker = new(command);
         pendingReply = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -371,6 +429,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Disconnect()
     {
         typedTemperature = null;
+        batteryStatus = null;
+        batteryLevel = null;
+        Battery = "—";
+        BatteryDetails = "Awaiting battery data";
         typedPressure = null;
         measurementStatus = null;
         transport.Disconnect();
@@ -494,6 +556,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void TimerTick(object? sender, EventArgs args)
     {
+        UpdateBatteryReadout();
         if (scanning && DateTimeOffset.UtcNow - scanStarted > TimeSpan.FromSeconds(15)) StopScan();
         if (Connected && framer.IsExpired(DateTimeOffset.UtcNow))
         {
@@ -525,6 +588,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReceiveLine("PONG");
             ReceiveLine("OK LOG_STREAM ON");
             ReceiveLine("supply_mv=3298 low_voltage=0 vrefint_raw=1502 age=100 ms");
+            ReceiveLine("battery_mv=3981 level_percent_estimate=72 usb_present=0 low_battery=0 age=100 ms");
             TimerTick(null, EventArgs.Empty);
             ReceiveLine("L,1040,GNSS lookup started");
             Add("SYSTEM", "Replies and firmware logs appear independently of telemetry.");

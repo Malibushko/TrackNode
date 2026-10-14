@@ -53,6 +53,7 @@ private:
 	status handle_hello(const ble_bridge::frame &frame);
 	status handle_send(const ble_bridge::frame &frame);
 	status handle_measurement(const ble_bridge::frame &frame);
+	status handle_battery(const ble_bridge::frame &frame);
 	status handle_advertise(const ble_bridge::frame &frame);
 	status handle_stop_advertise(const ble_bridge::frame &frame);
 	status handle_enter_pairing(const ble_bridge::frame &frame);

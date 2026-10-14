@@ -32,11 +32,11 @@ if(MINGW)
     target_link_options(control_button_gesture_test PRIVATE -static-libgcc -static-libstdc++)
 endif()
 
-add_executable(board_state_service_test board_state_service_test.cpp
-    "${PROJECT_SOURCE_DIR}/src/infrastructure/board_state_service.cpp")
-target_include_directories(board_state_service_test PRIVATE board_state_fakes)
-target_link_libraries(board_state_service_test PRIVATE host_headers)
-add_test(NAME board_state_service_test COMMAND board_state_service_test)
+add_executable(battery_service_test battery_service_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/battery_service.cpp")
+target_include_directories(battery_service_test BEFORE PRIVATE battery_fakes)
+target_link_libraries(battery_service_test PRIVATE host_headers)
+add_test(NAME battery_service_test COMMAND battery_service_test)
 
 add_executable(component_list_test component_list_test.cpp)
 target_link_libraries(component_list_test PRIVATE host_headers)
@@ -103,7 +103,7 @@ foreach(test_target service_list_test telemetry_router_test command_reply_test)
 endforeach()
 
 if(MINGW)
-    target_link_options(board_state_service_test PRIVATE -static-libgcc -static-libstdc++)
+    target_link_options(battery_service_test PRIVATE -static-libgcc -static-libstdc++)
     foreach(test_target component_list_test pwm_test application_test command_protocol_test supervisor_policy_test gnss_lookup_strategy_test supervisor_policy_no_storage_test log_record_test radio_packet_test radio_publish_policy_test nmea0183_test neo6m_test)
         target_link_options(${test_target} PRIVATE -static-libgcc -static-libstdc++)
     endforeach()

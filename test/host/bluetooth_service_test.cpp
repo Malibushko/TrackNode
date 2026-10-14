@@ -24,6 +24,12 @@ public:
 	std::vector<std::string> chunks;
 	std::vector<std::uint32_t> sessions;
 	std::vector<std::vector<std::uint8_t>> measurements;
+	std::vector<std::vector<std::uint8_t>> batteries;
+	status publish_battery(std::span<const std::uint8_t> data) override
+	{
+		batteries.emplace_back(data.begin(), data.end());
+		return {};
+	}
 	status publish_measurement(std::span<const std::uint8_t> data) override
 	{
 		measurements.emplace_back(data.begin(), data.end());
@@ -162,6 +168,7 @@ int main()
 	backend.events.push_back(receive("PING\nPING", 10));
 	backend.events.push_back(receive("PING", 9));
 	backend.events.push_back(receive("BOOTLOAD", 10));
+	backend.events.push_back(receive("GET BATTERY", 10));
 	backend.events.push_back(bluetooth_event{
 		.type = bluetooth_event::kind::link_changed,
 		.link = {true, true, 20, 11}
@@ -193,11 +200,13 @@ int main()
 	{
 	}
 
-	require(commands.received.size() == 2);
+	require(commands.received.size() == 3);
 	require(commands.received[0].value.type == command_type::ping);
 	require(commands.received[0].session == 10 && commands.received[0].reply_to == &service);
 	require(commands.received[1].value.type == command_type::bootload);
 	require(commands.received[1].session == 10 && commands.received[1].reply_to == &service);
+	require(commands.received[2].value.type == command_type::read_battery);
+	require(commands.received[2].session == 10 && commands.received[2].reply_to == &service);
 	require(backend.initialized == 2 && backend.advertisements == 2);
 	std::string text;
 	for (std::size_t index = 0; index < backend.chunks.size(); ++index)
@@ -225,6 +234,17 @@ int main()
 		}
 	};
 	require(cache_service.submit(cached).has_value());
+	bluetooth_battery::snapshot battery{
+		.flags = bluetooth_battery::reading_valid,
+		.level = 72,
+		.battery_mv = 3981,
+		.supply_mv = 3300,
+		.battery_raw = 2470,
+		.vrefint_raw = 1500,
+		.minimum_raw = 2460,
+		.maximum_raw = 2480
+	};
+	require(cache_service.submit_battery(battery).has_value());
 	cache_backend.events.push_back(bluetooth_event{});
 	cache_backend.events.push_back(bluetooth_event{
 		.type = bluetooth_event::kind::link_changed,
@@ -251,6 +271,12 @@ int main()
 	{
 	}
 	require(cache_backend.measurements.size() == 4 && cache_backend.chunks.empty());
+	require(cache_backend.batteries.size() == 4);
+	for (const auto &bytes : cache_backend.batteries)
+	{
+		const auto value = bluetooth_battery::decode(bytes);
+		require(value && value->battery_mv == 3981 && value->level == 72);
+	}
 	require(cache_backend.initialized == 2);
 	for (const auto &bytes : cache_backend.measurements)
 	{

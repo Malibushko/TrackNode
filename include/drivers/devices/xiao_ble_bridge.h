@@ -19,6 +19,7 @@ public:
 
 	status send(std::span<const std::uint8_t> payload, std::uint32_t session) override;
 	status publish_measurement(std::span<const std::uint8_t> payload) override;
+	status publish_battery(std::span<const std::uint8_t> payload) override;
 
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override;
 

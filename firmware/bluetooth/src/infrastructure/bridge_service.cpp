@@ -227,6 +227,8 @@ status bridge_service::handle_frame(const ble_bridge::frame &frame)
 			return handle_enter_pairing(frame);
 		case ble_bridge::frame_type::measurement:
 			return handle_measurement(frame);
+		case ble_bridge::frame_type::battery:
+			return handle_battery(frame);
 		case ble_bridge::frame_type::advertise:
 			return handle_advertise(frame);
 		case ble_bridge::frame_type::stop_advertise:
@@ -332,6 +334,18 @@ status bridge_service::handle_measurement(const ble_bridge::frame &frame)
 		return write_ack(frame, fail(component::protocol, error_code::invalid_config));
 	}
 	return write_ack(frame, config_.bluetooth.update_measurement(*value));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status bridge_service::handle_battery(const ble_bridge::frame &frame)
+{
+	const auto value = bluetooth_battery::decode(std::span{frame.payload}.first(frame.size));
+	if (!value)
+	{
+		return write_ack(frame, fail(component::protocol, error_code::invalid_config));
+	}
+	return write_ack(frame, config_.bluetooth.update_battery(*value));
 }
 
 //////////////////////////////////////////////////////////////////////////

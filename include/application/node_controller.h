@@ -14,7 +14,8 @@ class indicator_service;
 class logger_service;
 class supervisor;
 class gnss_service;
-class board_state_service;
+class battery_service;
+class battery_sink;
 
 // The application workflow: sampling cadence, command meaning and data flow.
 class node_controller final : public command_sink
@@ -26,7 +27,7 @@ public:
 #endif
 	                indicator_service &indicator, logger_service &logger,
 	                gnss_service &gnss, telemetry_sink &telemetry,
-	                board_state_service &board_state, supervisor &monitor);
+	                battery_service &battery, supervisor &monitor, battery_sink *battery_output = nullptr);
 
 public: // Common lifecycle
 	status start();
@@ -43,6 +44,7 @@ private: // Common task loop
 
 private: // Application behavior
 	void take_sample();
+	void sample_battery();
 	void handle_command(command_request request);
 	status reply(const char *format, ...);
 	void handle_ping();
@@ -54,6 +56,7 @@ private: // Application behavior
 	void handle_set_sample_period(std::uint32_t period_ms);
 	void handle_reset_storage();
 	void handle_read_voltage();
+	void handle_read_battery();
 	void handle_set_power_mode(power_mode power_mode);
 	bool ensure_sample_available();
 
@@ -68,7 +71,9 @@ private: // State
 	logger_service &logger_;
 	gnss_service &gnss_;
 	telemetry_sink &telemetry_;
-	board_state_service &board_state_;
+	battery_service &battery_;
+	battery_sink *battery_output_;
+	std::optional<std::uint32_t> published_battery_at_;
 	supervisor &monitor_;
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;

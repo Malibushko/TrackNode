@@ -43,6 +43,10 @@ public:
 
 	virtual status send(std::span<const std::uint8_t> payload, std::uint32_t session) = 0;
 	virtual status publish_measurement(std::span<const std::uint8_t> payload) = 0;
+	virtual status publish_battery(std::span<const std::uint8_t>)
+	{
+		return fail(component::service, error_code::not_implemented);
+	}
 
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
 };

@@ -20,6 +20,14 @@ bt_gatt_cb mtu_callback{
 };
 
 BT_GATT_SERVICE_DEFINE(
+	battery_service,
+	BT_GATT_PRIMARY_SERVICE(&gatt_uuid::battery_service.uuid),
+	BT_GATT_CHARACTERISTIC(&gatt_uuid::battery_level.uuid, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+		BT_GATT_PERM_READ_ENCRYPT, zephyr_gatt_server::on_battery_read, nullptr, nullptr),
+	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT)
+);
+
+BT_GATT_SERVICE_DEFINE(
 	environmental_service,
 	BT_GATT_PRIMARY_SERVICE(&gatt_uuid::environmental_sensing.uuid),
 	BT_GATT_CHARACTERISTIC(&gatt_uuid::temperature.uuid, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
@@ -33,6 +41,9 @@ BT_GATT_SERVICE_DEFINE(
 BT_GATT_SERVICE_DEFINE(
 	tracknode_service,
 	BT_GATT_PRIMARY_SERVICE(&gatt_uuid::service.uuid),
+	BT_GATT_CHARACTERISTIC(&gatt_uuid::battery_status.uuid, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
+		BT_GATT_PERM_READ_ENCRYPT, zephyr_gatt_server::on_battery_read, nullptr, nullptr),
+	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
 	BT_GATT_CHARACTERISTIC(&gatt_uuid::gnss.uuid, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
 		BT_GATT_PERM_READ_ENCRYPT, zephyr_gatt_server::on_measurement_read, nullptr, nullptr),
 	BT_GATT_CCC(zephyr_gatt_server::on_subscription_changed, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
@@ -71,6 +82,15 @@ const bt_gatt_attr *measurement_attribute(std::size_t index)
 		&gatt_uuid::gnss.uuid, &gatt_uuid::measurement_status.uuid};
 	const auto &service = index < 2 ? environmental_service : tracknode_service;
 	return bt_gatt_find_by_uuid(service.attrs, service.attr_count, uuids[index]);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+const bt_gatt_attr *battery_attribute(std::size_t index)
+{
+	return index == 0
+		? bt_gatt_find_by_uuid(battery_service.attrs, battery_service.attr_count, &gatt_uuid::battery_level.uuid)
+		: bt_gatt_find_by_uuid(tracknode_service.attrs, tracknode_service.attr_count, &gatt_uuid::battery_status.uuid);
 }
 
 struct measurement_bytes
@@ -183,6 +203,9 @@ void zephyr_gatt_server::unbind()
 		instance = nullptr;
 		callbacks_ = {};
 		measurements_.reset();
+		battery_ = {};
+		battery_pending_ = 3;
+		++battery_revision_;
 	}
 }
 
@@ -304,6 +327,7 @@ void zephyr_gatt_server::reset_measurement()
 
 void zephyr_gatt_server::notify_measurements(bt_conn *connection)
 {
+	notify_battery(connection);
 	bluetooth_measurement::snapshot value;
 	std::uint32_t revision;
 	std::uint8_t pending;
@@ -355,6 +379,121 @@ void zephyr_gatt_server::notify_measurements(bt_conn *connection)
 
 //////////////////////////////////////////////////////////////////////////
 
+
+status zephyr_gatt_server::update_battery(const bluetooth_battery::snapshot &value)
+{
+	if (!bluetooth_battery::valid(value))
+	{
+		return fail(component::bluetooth, error_code::invalid_config);
+	}
+	mutex_lock_guard guard{binding_mutex};
+	if (instance != this)
+	{
+		return fail(component::bluetooth, error_code::not_initialized);
+	}
+	battery_ = value;
+	battery_received_at_ = k_uptime_get();
+	++battery_revision_;
+	battery_pending_ = 3;
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_gatt_server::reset_battery()
+{
+	mutex_lock_guard guard{binding_mutex};
+	battery_ = {};
+	battery_received_at_ = k_uptime_get();
+	battery_last_flags_ = 0;
+	++battery_revision_;
+	battery_pending_ = 3;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_gatt_server::notify_battery(bt_conn *connection)
+{
+	bluetooth_battery::snapshot value;
+	std::uint32_t revision;
+	std::uint8_t pending;
+	{
+		mutex_lock_guard guard{binding_mutex};
+		if (instance != this || !connection || !callbacks_.authorized ||
+		    !callbacks_.authorized(callbacks_.context, connection))
+		{
+			return;
+		}
+		const auto elapsed = static_cast<std::uint32_t>(std::min<std::int64_t>(
+		    k_uptime_get() - battery_received_at_, UINT32_MAX));
+		value = bluetooth_battery::aged(battery_, elapsed);
+		if (value.flags != battery_last_flags_)
+		{
+			++battery_revision_;
+			battery_pending_ = 3;
+			battery_last_flags_ = value.flags;
+		}
+		revision = battery_revision_;
+		pending = battery_pending_;
+	}
+	const auto bytes = bluetooth_battery::encode(value);
+	for (std::size_t index = 0; index < 2; ++index)
+	{
+		const auto mask = static_cast<std::uint8_t>(1 << index);
+		const auto *attribute = battery_attribute(index);
+		const bool unavailable_level = index == 0 && !(value.flags & bluetooth_battery::reading_valid);
+		if (!(pending & mask) || unavailable_level || !attribute ||
+		    !bt_gatt_is_subscribed(connection, attribute, BT_GATT_CCC_NOTIFY))
+		{
+			continue;
+		}
+		const auto result = index == 0
+		    ? bt_gatt_notify(connection, attribute, &value.level, 1)
+		    : bt_gatt_notify(connection, attribute, bytes.data(), bytes.size());
+		if (result == 0)
+		{
+			mutex_lock_guard guard{binding_mutex};
+			if (revision == battery_revision_)
+			{
+				battery_pending_ &= ~mask;
+			}
+		}
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+ssize_t zephyr_gatt_server::on_battery_read(bt_conn *connection, const bt_gatt_attr *attribute,
+	void *buffer, std::uint16_t length, std::uint16_t offset)
+{
+	bluetooth_battery::snapshot value;
+	{
+		mutex_lock_guard guard{binding_mutex};
+		if (!instance)
+		{
+			return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+		}
+		if (!instance->callbacks_.authorized || !instance->callbacks_.authorized(instance->callbacks_.context, connection))
+		{
+			return BT_GATT_ERR(BT_ATT_ERR_AUTHORIZATION);
+		}
+		const auto elapsed = static_cast<std::uint32_t>(std::min<std::int64_t>(
+		    k_uptime_get() - instance->battery_received_at_, UINT32_MAX));
+		value = bluetooth_battery::aged(instance->battery_, elapsed);
+	}
+	if (attribute == battery_attribute(0))
+	{
+		if (!(value.flags & bluetooth_battery::reading_valid))
+		{
+			return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+		}
+		return bt_gatt_attr_read(connection, attribute, buffer, length, offset, &value.level, 1);
+	}
+	const auto bytes = bluetooth_battery::encode(value);
+	return bt_gatt_attr_read(connection, attribute, buffer, length, offset, bytes.data(), bytes.size());
+}
+
+//////////////////////////////////////////////////////////////////////////
 
 ssize_t zephyr_gatt_server::on_measurement_read(bt_conn *connection, const bt_gatt_attr *attribute,
 	void *buffer, std::uint16_t length, std::uint16_t offset)
@@ -451,6 +590,8 @@ void zephyr_gatt_server::on_subscription_changed(const bt_gatt_attr *attribute, 
 	{
 		instance->pending_ = all_measurements;
 		++instance->revision_;
+		instance->battery_pending_ = 3;
+		++instance->battery_revision_;
 	}
 	if (instance != nullptr && instance->callbacks_.changed != nullptr)
 	{

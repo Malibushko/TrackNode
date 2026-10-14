@@ -33,6 +33,7 @@ enum class frame_type : std::uint8_t
 	send = 2,
 	measurement = 3,
 	enter_pairing = 4,
+	battery = 5,
 	pairing_state = 0x87,
 	ready = 0x81,
 	link = 0x82,

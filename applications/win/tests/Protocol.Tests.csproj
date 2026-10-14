@@ -8,6 +8,7 @@
  <ItemGroup>
   <Compile Include="../Protocol.cs" Link="Protocol.cs"/>
   <Compile Include="../Measurements.cs" Link="Measurements.cs"/>
+  <Compile Include="../BatteryMeasurement.cs" Link="BatteryMeasurement.cs"/>
   <Compile Include="../TelemetryHistory.cs" Link="TelemetryHistory.cs"/>
   <Compile Include="../HistoryChartData.cs" Link="HistoryChartData.cs"/>
  </ItemGroup>

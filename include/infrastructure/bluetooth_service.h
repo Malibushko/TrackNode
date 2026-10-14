@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/telemetry_sink.h"
+#include "application/battery_sink.h"
 #include "application/command_sink.h"
 #include "application/firmware_log_sink.h"
 #include "infrastructure/bluetooth_config.h"
@@ -16,7 +17,7 @@
 class logger_service;
 class supervisor;
 
-class bluetooth_service final : public telemetry_sink, public command_reply_sink, public firmware_log_sink
+class bluetooth_service final : public telemetry_sink, public command_reply_sink, public firmware_log_sink, public battery_sink
 {
 public:
 	bluetooth_service(bluetooth_backend &backend, command_sink &commands,
@@ -32,6 +33,7 @@ public:
 
 	[[nodiscard]] bool can_accept_session(std::uint32_t session) const override;
 	status submit(const telemetry_sample &sample) override;
+	status submit_battery(const bluetooth_battery::snapshot &value) override;
 	status submit_reply(const command_reply &reply) override;
 	void submit_log(std::string_view text) override;
 	void set_power_mode(power_mode mode) override;
@@ -49,6 +51,7 @@ private:
 	status process_output();
 	status process_replies();
 	status process_sample();
+	status process_battery();
 	status process_history();
 	status process_logs();
 	result<bool> process_diagnostic(std::uint32_t session);
@@ -83,6 +86,7 @@ private:
 	TaskHandle_t task_ = nullptr;
 	QueueHandle_t replies_ = nullptr;
 	QueueHandle_t samples_ = nullptr;
+	QueueHandle_t batteries_ = nullptr;
 	QueueHandle_t logs_ = nullptr;
 
 	std::atomic<bool> pairing_window_requested_{false};
@@ -93,6 +97,13 @@ private:
 
 	std::optional<telemetry_sample> latest_sample_;
 	bool measurement_pending_ = false;
+	struct queued_battery
+	{
+		bluetooth_battery::snapshot value;
+		TickType_t received_at;
+	};
+	std::optional<queued_battery> latest_battery_;
+	bool battery_pending_ = false;
 	std::uint32_t request_id_ = 0;
 
 	struct log_message

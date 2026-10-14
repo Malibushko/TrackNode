@@ -12,7 +12,7 @@
 #include "infrastructure/console_service.h"
 #include "infrastructure/logger_service.h"
 #include "infrastructure/sensor_service.h"
-#include "infrastructure/board_state_service.h"
+#include "infrastructure/battery_service.h"
 #include "infrastructure/control_button_service.h"
 #include "infrastructure/gnss_service.h"
 
@@ -414,13 +414,22 @@ status configure_controller(firmware_composition &application)
 	}
 #endif
 
-	static board_state_service board_state;
+	static battery_service battery{battery_service::config{
+		.battery_input = adc_config{
+			.pin = {GPIOA, GPIO_PIN_1},
+			.channel = ADC_CHANNEL_1,
+			.sample_time = ADC_SAMPLETIME_480CYCLES
+		},
+		.usb_power_pin = {GPIOA, GPIO_PIN_8},
+		.upper_ohms = 10000,
+		.lower_ohms = 10000
+	}};
 	static node_controller controller{*application.measurements,
 #ifndef NO_STORAGE
 	    *application.records,
 #endif
 	    *application.indicator, *application.logger, *application.gnss,
-	    *application.journal, board_state, *application.monitor};
+	    *application.journal, battery, *application.monitor, application.bluetooth};
 
 	auto added = application.services.add(service_id::sensor, controller,
 	    {service_id::logger, service_id::indicator, service_id::gnss,

@@ -182,6 +182,27 @@ status xiao_ble_bridge::publish_measurement(std::span<const std::uint8_t> payloa
 //////////////////////////////////////////////////////////////////////////
 
 
+status xiao_ble_bridge::publish_battery(std::span<const std::uint8_t> payload)
+{
+	if (!initialized_)
+	{
+		return fail(component::service, error_code::not_initialized);
+	}
+	if (payload.empty() || payload.size() > ble_bridge::payload_capacity)
+	{
+		return fail(component::service, error_code::invalid_argument);
+	}
+	ble_bridge::frame request{
+		.type = ble_bridge::frame_type::battery,
+		.session = remote_session_,
+		.size = static_cast<ble_bridge::length_type>(payload.size())
+	};
+	std::copy(payload.begin(), payload.end(), request.payload.begin());
+	return send_and_wait_for_response(request, ble_bridge::frame_type::ack);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 result<bluetooth_event> xiao_ble_bridge::poll(std::uint32_t timeout_ms)
 {
 	if (!initialized_)

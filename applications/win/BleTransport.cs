@@ -22,6 +22,7 @@ public sealed class BleTransport : IDisposable
     private BluetoothLEDevice? device;
     private GattDeviceService? service;
     private GattDeviceService? environmentalService;
+    private GattDeviceService? batteryService;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<GattCharacteristic, int> measurements = new();
     private GattSession? session;
     private GattCharacteristic? rx;
@@ -121,6 +122,30 @@ public sealed class BleTransport : IDisposable
                 var result = await characteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
                 if (result != GattCommunicationStatus.Success) throw new IOException($"Measurement subscription: {result}");
             }
+            var batteryServices = await device.GetGattServicesForUuidAsync(BatteryCharacteristics.ServiceUuid, BluetoothCacheMode.Uncached);
+            if (connecting != Generation) throw new IOException("Connection changed during battery discovery.");
+            if (batteryServices.Status == GattCommunicationStatus.Success && batteryServices.Services.Count > 0)
+            {
+                batteryService = batteryServices.Services[0];
+                foreach (var unused in batteryServices.Services.Skip(1)) unused.Dispose();
+                var batteryCharacteristics = await batteryService.GetCharacteristicsAsync(BluetoothCacheMode.Uncached);
+                if (connecting != Generation) throw new IOException("Connection changed during battery discovery.");
+                if (batteryCharacteristics.Status != GattCommunicationStatus.Success)
+                    throw new IOException($"Battery discovery: {batteryCharacteristics.Status}");
+                all.AddRange(batteryCharacteristics.Characteristics);
+            }
+            foreach (var uuid in new[] { BatteryCharacteristics.LevelUuid, BatteryCharacteristics.StatusUuid })
+            {
+                var characteristic = all.SingleOrDefault(c => c.Uuid == uuid);
+                if (characteristic is null) continue;
+                if (!characteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Read) ||
+                    !characteristic.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify))
+                    throw new IOException($"Battery Read / Notify characteristic {uuid} is malformed.");
+                measurements.TryAdd(characteristic, connecting);
+                characteristic.ValueChanged += OnMeasurement;
+                var result = await characteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+                if (result != GattCommunicationStatus.Success) throw new IOException($"Battery subscription: {result}");
+            }
             foreach (var characteristic in measurements.Keys)
             {
                 var result = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
@@ -179,7 +204,7 @@ public sealed class BleTransport : IDisposable
     private static bool IsUnavailableSensorReading(GattReadResult result, Guid characteristic)
     {
         var sensorCharacteristic = characteristic == Measurements.TemperatureUuid ||
-            characteristic == Measurements.PressureUuid;
+            characteristic == Measurements.PressureUuid || characteristic == BatteryCharacteristics.LevelUuid;
         return result.Status == GattCommunicationStatus.ProtocolError && result.ProtocolError == 0x0e &&
             sensorCharacteristic;
     }
@@ -225,12 +250,14 @@ public sealed class BleTransport : IDisposable
         }
         service?.Dispose();
         environmentalService?.Dispose();
+        batteryService?.Dispose();
         device?.Dispose();
         rx = null;
         tx = null;
         session = null;
         service = null;
         environmentalService = null;
+        batteryService = null;
         device = null;
     }
 

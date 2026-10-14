@@ -7,7 +7,7 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     control_button_service.cpp
     logger_service.cpp
     sensor_service.cpp
-    board_state_service.cpp
+    battery_service.cpp
     supervisor.cpp
     service_status.cpp
     diagnostic_log.cpp

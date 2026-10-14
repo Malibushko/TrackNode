@@ -13,7 +13,7 @@ static_assert(std::is_trivially_copyable_v<telemetry_sample>);
 
 status bluetooth_service::start()
 {
-	const auto already_started = task_ || replies_ || samples_ || logs_;
+	const auto already_started = task_ || replies_ || samples_ || batteries_ || logs_;
 	if (already_started)
 	{
 		return fail(component::rtos, error_code::already_initialized);
@@ -25,8 +25,9 @@ status bluetooth_service::start()
 
 	replies_ = xQueueCreate(config_.reply_queue_capacity, sizeof(command_reply));
 	samples_ = xQueueCreate(1, sizeof(telemetry_sample));
+	batteries_ = xQueueCreate(1, sizeof(queued_battery));
 	logs_ = xQueueCreate(config_.log_queue_capacity, sizeof(log_message));
-	const auto queue_allocation_failed = !replies_ || !samples_ || !logs_;
+	const auto queue_allocation_failed = !replies_ || !samples_ || !batteries_ || !logs_;
 	if (queue_allocation_failed)
 	{
 		stop();
@@ -76,6 +77,11 @@ void bluetooth_service::stop()
 		vQueueDelete(logs_);
 		logs_ = nullptr;
 	}
+	if (batteries_)
+	{
+		vQueueDelete(batteries_);
+		batteries_ = nullptr;
+	}
 
 	reset_session();
 	pairing_window_requested_.store(false);
@@ -87,6 +93,8 @@ void bluetooth_service::stop()
 	backend_.stop();
 	latest_sample_.reset();
 	measurement_pending_ = false;
+	latest_battery_.reset();
+	battery_pending_ = false;
 	link_ = {};
 	advertise_pending_ = false;
 }
@@ -118,6 +126,7 @@ status bluetooth_service::validate_config() const
 bool bluetooth_service::initialize_backend()
 {
 	measurement_pending_ = latest_sample_.has_value();
+	battery_pending_ = latest_battery_.has_value();
 	reset_exchange();
 	link_ = {};
 	advertise_pending_ = false;
@@ -166,6 +175,25 @@ status bluetooth_service::submit(const telemetry_sample &sample)
 		return fail(component::service, error_code::not_initialized);
 	}
 	return from_freertos(xQueueOverwrite(samples_, &sample));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status bluetooth_service::submit_battery(const bluetooth_battery::snapshot &value)
+{
+	if (!batteries_)
+	{
+		return fail(component::service, error_code::not_initialized);
+	}
+	if (!bluetooth_battery::valid(value))
+	{
+		return fail(component::service, error_code::invalid_argument);
+	}
+	const queued_battery queued{
+		.value = value,
+		.received_at = xTaskGetTickCount()
+	};
+	return from_freertos(xQueueOverwrite(batteries_, &queued));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -317,6 +345,7 @@ status bluetooth_service::process_output()
 {
 	return process_replies()
 		.and_then([&]{ return process_sample(); })
+		.and_then([&]{ return process_battery(); })
 		.and_then([&]{ return process_history(); })
 		.and_then([&]{ return process_logs(); });
 }
@@ -334,6 +363,32 @@ status bluetooth_service::process_replies()
 		}
 	}
 
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status bluetooth_service::process_battery()
+{
+	queued_battery queued{};
+	if (xQueueReceive(batteries_, &queued, 0) == pdPASS)
+	{
+		latest_battery_ = queued;
+		battery_pending_ = true;
+	}
+	if (!battery_pending_ || !latest_battery_)
+	{
+		return {};
+	}
+	const auto elapsed = static_cast<std::uint32_t>(
+	    (xTaskGetTickCount() - latest_battery_->received_at) * portTICK_PERIOD_MS);
+	const auto value = bluetooth_battery::aged(latest_battery_->value, elapsed);
+	const auto bytes = bluetooth_battery::encode(value);
+	if (auto sent = backend_.publish_battery(bytes); !sent)
+	{
+		return sent;
+	}
+	battery_pending_ = false;
 	return {};
 }
 
@@ -504,6 +559,7 @@ status bluetooth_service::handle_link_changed(const bluetooth_link &link)
 	if (session_changed)
 	{
 		measurement_pending_ = latest_sample_.has_value();
+		battery_pending_ = latest_battery_.has_value();
 	}
 
 	const auto exchange_unavailable = !link.connected || !link.subscribed;

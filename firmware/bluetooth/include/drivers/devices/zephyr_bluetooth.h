@@ -39,6 +39,7 @@ public:
 
 	status update_measurement(const bluetooth_measurement::snapshot &value) override;
 	void reset_measurement() override;
+	status update_battery(const bluetooth_battery::snapshot &value) override;
 
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override;
 

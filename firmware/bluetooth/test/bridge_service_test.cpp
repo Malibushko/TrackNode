@@ -89,6 +89,12 @@ public:
 	bool busy = false;
 	ble::session_t receive_session = 0;
 	std::optional<bluetooth_measurement::snapshot> measurement;
+	std::optional<bluetooth_battery::snapshot> battery;
+	ble::status update_battery(const bluetooth_battery::snapshot &value) override
+	{
+		battery = value;
+		return {};
+	}
 	ble::status update_measurement(const bluetooth_measurement::snapshot &value) override
 	{
 		measurement = value;
@@ -97,6 +103,7 @@ public:
 	void reset_measurement() override
 	{
 		measurement.reset();
+		battery.reset();
 	}
 	void set_receive_session(ble::session_t value) override
 	{
@@ -252,7 +259,25 @@ int main()
 	require(!bluetooth.measurement);
 	handshake(26);
 	require(!bluetooth.measurement);
+	const auto battery_bytes = bluetooth_battery::encode({});
+	publication.type = ble_bridge::frame_type::battery;
+	publication.session = 26;
+	publication.size = battery_bytes.size();
+	std::copy(battery_bytes.begin(), battery_bytes.end(), publication.payload.begin());
+	push(publication);
+	require(bridge.poll().has_value() && bluetooth.battery.has_value());
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::ok));
+	publication.payload[2] = 101;
+	push(publication);
+	require(bridge.poll().has_value());
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::invalid_request));
+	publication.payload[2] = 0;
+	publication.session = 25;
+	push(publication);
+	require(bridge.poll().has_value());
+	require(transport.written.back().payload[0] == static_cast<std::uint8_t>(ble_bridge::ack_code::not_ready));
 	handshake(25);
+	require(!bluetooth.battery);
 	transport.chunks.emplace_back(advertise.begin(), advertise.begin() + 5);
 	require(bridge.poll().has_value());
 	require(bluetooth.advertisements == 0);

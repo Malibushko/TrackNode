@@ -19,6 +19,7 @@ public:
 	}
 
 	status init();
+	status select_channel(adc_config config);
 	result<uint16_t> read_raw(uint32_t timeout_ms = 10);
 
 private:

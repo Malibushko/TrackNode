@@ -18,6 +18,7 @@ enum class command_type : std::uint8_t
 	reset_storage_confirm,
 	read_voltage,
 	bootload,
+	read_battery,
 	error
 };
 
