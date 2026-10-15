@@ -3,7 +3,8 @@ using System.Text;
 
 namespace TrackNode.DevTools;
 
-public sealed record BatteryChartPoint(DateTimeOffset Time, ushort? Millivolts, byte? Level, bool? UsbPresent);
+public sealed record BatteryChartPoint(DateTimeOffset Time, ushort? Millivolts, byte? Level, bool? UsbPresent,
+    byte? Quality = null, ushort? Raw = null, ushort? ReferenceRaw = null, ushort? SupplyMv = null, ushort? MinimumRaw = null, ushort? MaximumRaw = null);
 
 public sealed class BatteryChartData
 {
@@ -16,10 +17,9 @@ public sealed class BatteryChartData
         if (!measurement.Valid) return Break(received);
         var time = received.AddMilliseconds(-measurement.AgeMs);
         var previous = points.LastOrDefault();
-        if (previous is not null && time <= previous.Time) return false;
-        if (previous?.Millivolts == measurement.BatteryMv && previous.Level == measurement.Level &&
-            previous.UsbPresent == measurement.UsbPresent && time - previous.Time < TimeSpan.FromSeconds(2)) return false;
-        points.Add(new(time, measurement.BatteryMv, measurement.Level, measurement.UsbPresent));
+        if (previous is not null && time - previous.Time < TimeSpan.FromSeconds(2)) return false;
+        points.Add(new(time, measurement.BatteryMv, measurement.Level, measurement.UsbPresent,
+            measurement.Quality, measurement.Raw, measurement.ReferenceRaw, measurement.SupplyMv, measurement.MinimumRaw, measurement.MaximumRaw));
         Trim();
         return true;
     }
@@ -43,9 +43,9 @@ public sealed class BatteryChartData
 
     public string Export()
     {
-        var text = new StringBuilder("timestamp,battery_mv_filtered,level_percent_estimate,usb_present\n");
+        var text = new StringBuilder("timestamp,battery_mv_filtered,level_percent_estimate,usb_present,quality,battery_raw,vrefint_raw,supply_mv,min_raw,max_raw\n");
         foreach (var point in points)
-            text.Append(CultureInfo.InvariantCulture, $"{point.Time:O},{point.Millivolts},{point.Level},{(point.UsbPresent.HasValue ? point.UsbPresent.Value ? "1" : "0" : "")}\n");
+            text.Append(CultureInfo.InvariantCulture, $"{point.Time:O},{point.Millivolts},{point.Level},{(point.UsbPresent.HasValue ? point.UsbPresent.Value ? "1" : "0" : "")},{point.Quality},{point.Raw},{point.ReferenceRaw},{point.SupplyMv},{point.MinimumRaw},{point.MaximumRaw}\n");
         return text.ToString();
     }
 

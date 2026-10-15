@@ -4,18 +4,25 @@ using System.IO;
 namespace TrackNode.DevTools;
 
 public sealed record BatteryMeasurement(byte Flags, byte Level, ushort BatteryMv, ushort SupplyMv,
-    ushort Raw, ushort ReferenceRaw, ushort MinimumRaw, ushort MaximumRaw, uint AgeMs)
+    ushort Raw, ushort ReferenceRaw, ushort MinimumRaw, ushort MaximumRaw, uint AgeMs, byte Quality = 0, byte Schema = 2)
 {
-    public bool Valid => (Flags & 1) != 0 && AgeMs < 15000;
+    public uint LifetimeMs => Schema == 1 ? 15000u : 1200000u;
+    public bool Valid => (Flags & 1) != 0 && AgeMs < LifetimeMs;
     public bool UsbPresent => (Flags & 2) != 0;
     public bool Low => (Flags & 4) != 0;
+    public bool Pending => (Flags & 8) != 0;
+    public bool Unstable => (Flags & 16) != 0;
+    public bool EstimateAdjusted => (Flags & 32) != 0;
+    public string QualityLabel => Quality switch { 1 => "Low load", 2 => "Under load", 3 => "Unstable update", _ => "Unspecified" };
 
     public static BatteryMeasurement Decode(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length != 20 || bytes[0] != 1 || bytes[3] != 0 || (bytes[1] & ~7) != 0 || bytes[2] > 100)
+        if (bytes.Length != 20 || bytes[0] is not (1 or 2) || bytes[2] > 100 ||
+            (bytes[0] == 1 && (bytes[3] != 0 || (bytes[1] & ~7) != 0)) ||
+            (bytes[0] == 2 && (bytes[3] > 3 || (bytes[1] & ~63) != 0)))
             throw new InvalidDataException("Unsupported or malformed battery snapshot.");
         var value = new BatteryMeasurement(bytes[1], bytes[2], Read(bytes, 4), Read(bytes, 6), Read(bytes, 8), Read(bytes, 10),
-            Read(bytes, 12), Read(bytes, 14), BinaryPrimitives.ReadUInt32LittleEndian(bytes[16..]));
+            Read(bytes, 12), Read(bytes, 14), BinaryPrimitives.ReadUInt32LittleEndian(bytes[16..]), bytes[3], bytes[0]);
         var malformedReading = (value.Flags & 1) != 0 &&
             (value.BatteryMv is < 2500 or > 4500 || value.SupplyMv is < 1800 or > 3600 ||
              value.MinimumRaw == 0 || value.MinimumRaw > value.Raw || value.Raw > value.MaximumRaw ||

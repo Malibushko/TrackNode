@@ -61,7 +61,7 @@ public sealed class BatteryChart : FrameworkElement
             var before = points[i - 1];
             var current = points[i];
             var continuous = before.Millivolts.HasValue && current.Millivolts.HasValue &&
-                current.Time - before.Time < TimeSpan.FromSeconds(15);
+                current.Time - before.Time < TimeSpan.FromMinutes(12);
             if (continuous && before.UsbPresent == true)
                 drawing.DrawRectangle(usb, null, new Rect(X(before), plot.Top, Math.Max(0, X(current) - X(before)), plot.Height));
         }
@@ -80,7 +80,7 @@ public sealed class BatteryChart : FrameworkElement
         {
             if (point.Millivolts is not ushort mv) { previous = null; continue; }
             var position = new Point(X(point), Y(mv));
-            if (previous?.Millivolts is ushort before && point.Time - previous.Time < TimeSpan.FromSeconds(15))
+            if (previous?.Millivolts is ushort before && point.Time - previous.Time < TimeSpan.FromMinutes(12))
             {
                 drawing.DrawLine(voltage, new Point(X(previous), Y(before)), position);
                 if (previous.Level is byte beforeLevel && point.Level is byte currentLevel)

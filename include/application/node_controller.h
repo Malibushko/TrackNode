@@ -3,6 +3,7 @@
 #include "application/command_sink.h"
 #include "application/sample.h"
 #include "application/telemetry_sink.h"
+#include "application/battery_schedule.h"
 
 #include <optional>
 
@@ -21,7 +22,13 @@ class battery_sink;
 class node_controller final : public command_sink
 {
 public:
-	node_controller(sensor_service &sensor,
+	struct config
+	{
+		battery_schedule::config battery_sampling{};
+		std::uint32_t battery_refresh_age_ms = 420000;
+	};
+
+	node_controller(config settings, sensor_service &sensor,
 #ifndef NO_STORAGE
 	                storage_service &storage,
 #endif
@@ -45,6 +52,7 @@ private: // Common task loop
 private: // Application behavior
 	void take_sample();
 	void sample_battery();
+	bool can_sample_battery(std::uint32_t now_ms) const;
 	void handle_command(command_request request);
 	status reply(const char *format, ...);
 	void handle_ping();
@@ -63,6 +71,7 @@ private: // Application behavior
 	void set_power_mode(power_mode power_mode);
 
 private: // State
+	config config_;
 	sensor_service &sensor_;
 #ifndef NO_STORAGE
 	storage_service &storage_;
@@ -74,6 +83,7 @@ private: // State
 	battery_service &battery_;
 	battery_sink *battery_output_;
 	std::optional<std::uint32_t> published_battery_at_;
+	battery_schedule battery_schedule_;
 	supervisor &monitor_;
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;

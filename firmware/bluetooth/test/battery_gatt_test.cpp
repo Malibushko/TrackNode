@@ -9,6 +9,7 @@ int main()
 	snapshot value{
 		.flags = reading_valid | usb_present,
 		.level = 72,
+		.quality = 2,
 		.battery_mv = 3981,
 		.supply_mv = 3300,
 		.battery_raw = 2470,
@@ -17,17 +18,23 @@ int main()
 		.maximum_raw = 2480
 	};
 	const auto bytes = encode(value);
-	assert(bytes[0] == 1 && bytes[2] == 72 && bytes[4] == 0x8d && bytes[5] == 0x0f);
+	assert(bytes[0] == 2 && bytes[2] == 72 && bytes[4] == 0x8d && bytes[5] == 0x0f);
 	assert(decode(bytes) && encode(*decode(bytes)) == bytes);
+	assert(decode(bytes)->quality == 2);
+	auto legacy = bytes;
+	legacy[0] = 1;
+	legacy[3] = 0;
+	assert(decode(legacy) && decode(legacy)->quality == 0);
+	assert(aged(value, 300000).flags & reading_valid);
 	assert(!decode(std::span{bytes}.first(19)));
 	auto invalid = bytes;
 	invalid[2] = 101;
 	assert(!decode(invalid));
 	invalid = bytes;
-	invalid[3] = 1;
+	invalid[3] = 4;
 	assert(!decode(invalid));
 	invalid = bytes;
-	invalid[1] = 8;
+	invalid[1] = 64;
 	assert(!decode(invalid));
 	assert(!(aged(value, lifetime_ms).flags & reading_valid));
 	value.age_ms = UINT32_MAX - 1;
@@ -84,9 +91,9 @@ int main()
 	assert(notifications.size() == 4 && notifications.back().second[2] == 80);
 	simulated_time = lifetime_ms;
 	gatt.notify_battery(&connection);
-	assert(notifications.size() == 5 && notifications.back().first == status && notifications.back().second[1] == 0);
+	assert(notifications.size() == 5 && notifications.back().first == status && notifications.back().second[1] == usb_present);
 	assert(level->read(&connection, level, read.data(), read.size(), 0) == BT_GATT_ERR(BT_ATT_ERR_UNLIKELY));
-	assert(status->read(&connection, status, read.data(), read.size(), 0) == 20 && read[1] == 0);
+	assert(status->read(&connection, status, read.data(), read.size(), 0) == 20 && read[1] == usb_present);
 	assert(gatt.update_battery(value));
 	gatt.reset_battery();
 	assert(level->read(&connection, level, read.data(), read.size(), 0) == BT_GATT_ERR(BT_ATT_ERR_UNLIKELY));

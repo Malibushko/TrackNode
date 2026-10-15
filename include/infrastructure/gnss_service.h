@@ -30,6 +30,7 @@ public: // GNSS API
 
 	result<snapshot_t> read();
 	[[nodiscard]] bool has_updates() const;
+	[[nodiscard]] bool is_high_power_active(std::uint32_t now_ms) const;
 
 private: // Common private lifecycle
 
@@ -50,4 +51,7 @@ private: // State
 	TaskHandle_t task_ = nullptr;
 	bool has_updates_;
 	bool initialized_ = false;
+	bool standby_known_ = false;
+	std::uint32_t standby_started_ms_ = 0;
+	std::uint32_t standby_duration_ms_ = 0;
 };

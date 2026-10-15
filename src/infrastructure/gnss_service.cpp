@@ -117,6 +117,16 @@ bool gnss_service::has_updates() const
 
 //////////////////////////////////////////////////////////////////////////
 
+bool gnss_service::is_high_power_active(std::uint32_t now_ms) const
+{
+	taskENTER_CRITICAL();
+	const bool active = !standby_known_ || now_ms - standby_started_ms_ >= standby_duration_ms_;
+	taskEXIT_CRITICAL();
+	return active;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void gnss_service::task_entry(void *argument)
 {
 	static_cast<gnss_service*>(argument)->run();
@@ -141,6 +151,9 @@ void gnss_service::run()
 		{
 			if (!is_low_power || lookup_requested)
 			{
+				taskENTER_CRITICAL();
+				standby_known_ = false;
+				taskEXIT_CRITICAL();
 				if (auto result = device_.wake(); result)
 				{
 					lookup_.on_wake(now_ms());
@@ -177,7 +190,13 @@ void gnss_service::run()
 			const auto duration_ms = lookup_.sleep_duration_ms();
 			if (auto result = device_.standby_for(duration_ms); result)
 			{
-				lookup_.on_sleep_started(now_ms());
+				const auto started_ms = now_ms();
+				lookup_.on_sleep_started(started_ms);
+				taskENTER_CRITICAL();
+				standby_started_ms_ = started_ms;
+				standby_duration_ms_ = duration_ms;
+				standby_known_ = true;
+				taskEXIT_CRITICAL();
 			}
 			else
 			{

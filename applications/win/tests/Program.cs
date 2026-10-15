@@ -13,6 +13,7 @@ var chartBattery = new BatteryMeasurement(3, 70, 3970, 3300, 2463, 1500, 2450, 2
 Check(batteryChart.Add(chartBattery, now));
 Check(batteryChart.Points[0].Time == now.AddMilliseconds(-100));
 Check(!batteryChart.Add(chartBattery with { AgeMs = 200 }, now.AddMilliseconds(100)));
+Check(!batteryChart.Add(chartBattery with { Flags = 1, AgeMs = 1000 }, now.AddMilliseconds(1100)));
 Check(batteryChart.Add(chartBattery with { BatteryMv = 3980 }, now.AddSeconds(5)));
 Check(batteryChart.Break(now.AddSeconds(6)));
 Check(!batteryChart.Break(now.AddSeconds(7)));
@@ -29,6 +30,19 @@ var batteryBytes = new byte[] { 1, 3, 72, 0, 0x8d, 0x0f, 0xe4, 0x0c, 0xa6, 9, 0x
 var battery = BatteryMeasurement.Decode(batteryBytes);
 Check(battery.Valid && battery.Level == 72 && battery.UsbPresent && battery.BatteryMv == 3981 && battery.SupplyMv == 3300);
 Check(battery.Raw == 2470 && battery.MinimumRaw == 2460 && battery.MaximumRaw == 2480 && battery.AgeMs == 100);
+var uxBatteryBytes = batteryBytes.ToArray();
+uxBatteryBytes[0] = 2;
+uxBatteryBytes[1] = 3 | 8 | 16;
+uxBatteryBytes[3] = 3;
+System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(uxBatteryBytes.AsSpan(16), 300000);
+var uxBattery = BatteryMeasurement.Decode(uxBatteryBytes);
+Check(uxBattery.Valid && uxBattery.Unstable && uxBattery.Pending && uxBattery.Quality == 3);
+Check(!(battery with { AgeMs = 300000 }).Valid);
+Check((uxBattery with { AgeMs = 1199999 }).Valid);
+Check(!(uxBattery with { AgeMs = 1200000 }).Valid);
+uxBatteryBytes[3] = 4;
+try { BatteryMeasurement.Decode(uxBatteryBytes); Check(false); }
+catch (InvalidDataException) { Check(true); }
 Check(BatteryMeasurement.DecodeLevel(new byte[] { 100 }) == 100);
 foreach (var invalidBattery in new[] { new byte[19], new byte[] { 101 }, batteryBytes.Select((value, index) => index == 3 ? (byte)1 : value).ToArray() })
 {

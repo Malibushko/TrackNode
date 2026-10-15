@@ -235,7 +235,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (batteryChart.Add(batteryStatus, batteryReceived)) UpdateBatteryChart();
             UpdateBatteryReadout();
             Add("TLM", batteryStatus.Valid
-                ? $"Battery {batteryStatus.BatteryMv} mV (filtered) · ADC {batteryStatus.MinimumRaw}–{batteryStatus.MaximumRaw} · age {batteryStatus.AgeMs} ms"
+                ? $"Battery {batteryStatus.BatteryMv} mV · ≈{batteryStatus.Level}% · {batteryStatus.QualityLabel} · ADC {batteryStatus.MinimumRaw}–{batteryStatus.MaximumRaw} · age {batteryStatus.AgeMs} ms"
                 : $"Battery unavailable · age {batteryStatus.AgeMs} ms");
         }
         else if (uuid == BatteryCharacteristics.LevelUuid)
@@ -272,19 +272,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (batteryStatus is not null)
         {
             var age = batteryStatus.AgeMs / 1000.0 + Math.Max(0, (DateTimeOffset.UtcNow - batteryReceived).TotalSeconds);
-            if (!batteryStatus.Valid || age >= 15)
+            if (!batteryStatus.Valid || age * 1000 >= batteryStatus.LifetimeMs)
             {
                 Battery = "—";
-                BatteryDetails = "Unavailable / stale";
+                BatteryDetails = batteryStatus.Low ? "Low voltage · charge soon" : batteryStatus.UsbPresent
+                    ? "USB present · checking battery\nCharge completion unknown"
+                    : batteryStatus.Pending ? "Checking battery…" : "No reliable recent reading";
                 return;
             }
             Battery = (batteryStatus.BatteryMv / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + " V";
             Voltage = (batteryStatus.SupplyMv / 1000.0).ToString("F3", CultureInfo.InvariantCulture);
-            BatteryDetails = $"≈{batteryStatus.Level}% · {(batteryStatus.UsbPresent ? "USB present" : "Battery power")}\nADC {batteryStatus.MinimumRaw}–{batteryStatus.MaximumRaw} · {age:F1} s";
+            var advice = batteryStatus.UsbPresent
+                ? batteryStatus.Level >= 90 && batteryStatus.Quality is 1 or 2 && !batteryStatus.Unstable && !batteryStatus.Pending && age < 420
+                    ? "Likely charged · completion unknown" : "USB present · completion unknown"
+                : batteryStatus.Low || batteryStatus.Level <= 20 ? "Charge soon" : "Battery power";
+            var progress = batteryStatus.Pending ? " · checking" : batteryStatus.EstimateAdjusted ? " · estimate revised" : "";
+            BatteryDetails = $"≈{batteryStatus.Level}% · {advice}\n{batteryStatus.QualityLabel}{progress} · {age / 60:F1} min old";
         }
         else if (batteryLevel.HasValue)
         {
-            var stale = DateTimeOffset.UtcNow - batteryLevelReceived >= TimeSpan.FromSeconds(15);
+            var stale = DateTimeOffset.UtcNow - batteryLevelReceived >= TimeSpan.FromMinutes(20);
             Battery = stale ? "—" : $"≈{batteryLevel}%";
             BatteryDetails = stale ? "Unavailable / stale" : "Battery Level · voltage unavailable";
         }
@@ -603,7 +610,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void TimerTick(object? sender, EventArgs args)
     {
         UpdateBatteryReadout();
-        if (batteryStatus is not null && DateTimeOffset.UtcNow - batteryReceived >= TimeSpan.FromSeconds(15) &&
+        if (batteryStatus is not null && (DateTimeOffset.UtcNow - batteryReceived).TotalMilliseconds + batteryStatus.AgeMs >= batteryStatus.LifetimeMs &&
             batteryChart.Break(DateTimeOffset.UtcNow)) UpdateBatteryChart();
         if (scanning && DateTimeOffset.UtcNow - scanStarted > TimeSpan.FromSeconds(15)) StopScan();
         if (Connected && framer.IsExpired(DateTimeOffset.UtcNow))
@@ -637,6 +644,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ReceiveLine("OK LOG_STREAM ON");
             ReceiveLine("supply_mv=3298 low_voltage=0 vrefint_raw=1502 age=100 ms");
             ReceiveLine("battery_mv=3981 level_percent_estimate=72 usb_present=0 low_battery=0 age=100 ms");
+            batteryStatus = new BatteryMeasurement(1, 72, 3981, 3298, 2471, 1502, 2468, 2475, 300000, 1);
+            batteryReceived = DateTimeOffset.UtcNow;
+            UpdateBatteryReadout();
             TimerTick(null, EventArgs.Empty);
             ReceiveLine("L,1040,GNSS lookup started");
             Add("SYSTEM", "Replies and firmware logs appear independently of telemetry.");

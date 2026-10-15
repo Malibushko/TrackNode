@@ -422,9 +422,20 @@ status configure_controller(firmware_composition &application)
 		},
 		.usb_power_pin = {GPIOA, GPIO_PIN_8},
 		.upper_ohms = 10000,
-		.lower_ohms = 10000
+		.lower_ohms = 10000,
+		.sample_interval_ms = 1000,
+		.estimator = battery_estimator::config{
+			.rate_period_ms = 300000
+		}
 	}};
-	static node_controller controller{*application.measurements,
+	static node_controller controller{node_controller::config{
+		.battery_sampling = battery_schedule::config{
+			.update_interval_ms = 300000,
+			.retry_interval_ms = 30000,
+			.low_load_wait_ms = 60000
+		},
+		.battery_refresh_age_ms = 420000
+	}, *application.measurements,
 #ifndef NO_STORAGE
 	    *application.records,
 #endif

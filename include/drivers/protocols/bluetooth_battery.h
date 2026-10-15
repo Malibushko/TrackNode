@@ -5,18 +5,22 @@
 namespace bluetooth_battery
 {
 inline constexpr std::size_t wire_size = 20;
-inline constexpr std::uint32_t lifetime_ms = 15000;
+inline constexpr std::uint32_t lifetime_ms = 1200000;
 enum flag : std::uint8_t
 {
 	reading_valid = 1,
 	usb_present = 2,
-	low_battery = 4
+	low_battery = 4,
+	update_pending = 8,
+	unstable = 16,
+	estimate_adjusted = 32
 };
 
 struct snapshot
 {
 	std::uint8_t flags = 0;
 	std::uint8_t level = 0;
+	std::uint8_t quality = 0;
 	std::uint16_t battery_mv = 0;
 	std::uint16_t supply_mv = 0;
 	std::uint16_t battery_raw = 0;
@@ -28,7 +32,7 @@ struct snapshot
 
 inline bool valid(const snapshot &value)
 {
-	if ((value.flags & ~std::uint8_t{7}) != 0 || value.level > 100)
+	if ((value.flags & ~std::uint8_t{63}) != 0 || value.level > 100 || value.quality > 3)
 	{
 		return false;
 	}
@@ -48,9 +52,10 @@ inline std::array<std::uint8_t, wire_size> encode(const snapshot &value)
 {
 	using bluetooth_measurement::put;
 	std::array<std::uint8_t, wire_size> bytes{};
-	bytes[0] = 1;
+	bytes[0] = 2;
 	bytes[1] = value.flags;
 	bytes[2] = value.level;
+	bytes[3] = value.quality;
 	put(bytes, 4, value.battery_mv);
 	put(bytes, 6, value.supply_mv);
 	put(bytes, 8, value.battery_raw);
@@ -63,7 +68,8 @@ inline std::array<std::uint8_t, wire_size> encode(const snapshot &value)
 
 inline std::optional<snapshot> decode(std::span<const std::uint8_t> bytes)
 {
-	if (bytes.size() != wire_size || bytes[0] != 1 || bytes[3] != 0)
+	if (bytes.size() != wire_size || (bytes[0] != 1 && bytes[0] != 2) ||
+	    (bytes[0] == 1 && (bytes[3] != 0 || (bytes[1] & ~7) != 0)))
 	{
 		return std::nullopt;
 	}
@@ -71,6 +77,7 @@ inline std::optional<snapshot> decode(std::span<const std::uint8_t> bytes)
 	snapshot value{
 		.flags = bytes[1],
 		.level = bytes[2],
+		.quality = bytes[3],
 		.battery_mv = get<std::uint16_t>(bytes, 4),
 		.supply_mv = get<std::uint16_t>(bytes, 6),
 		.battery_raw = get<std::uint16_t>(bytes, 8),
@@ -91,7 +98,11 @@ inline snapshot aged(snapshot value, std::uint32_t elapsed)
 	value.age_ms = bluetooth_measurement::add_age(value.age_ms, elapsed);
 	if (value.age_ms >= lifetime_ms)
 	{
-		return snapshot{.age_ms = value.age_ms};
+		return snapshot{
+			.flags = static_cast<std::uint8_t>(value.flags & (usb_present | low_battery | update_pending | unstable)),
+			.quality = value.quality,
+			.age_ms = value.age_ms
+		};
 	}
 	return value;
 }

@@ -18,19 +18,20 @@
 
 #include <charconv>
 
-node_controller::node_controller(sensor_service &sensor,
+node_controller::node_controller(config settings, sensor_service &sensor,
 #ifndef NO_STORAGE
                                  storage_service &storage,
 #endif
                                  indicator_service &indicator, logger_service &logger,
                                  gnss_service &gnss, telemetry_sink &telemetry,
                                  battery_service &battery, supervisor &monitor, battery_sink *battery_output)
-    : sensor_(sensor),
+    : config_(settings), sensor_(sensor),
 #ifndef NO_STORAGE
       storage_(storage),
 #endif
       indicator_(indicator),
-      logger_(logger), gnss_(gnss), telemetry_(telemetry), battery_(battery), battery_output_(battery_output), monitor_(monitor)
+      logger_(logger), gnss_(gnss), telemetry_(telemetry), battery_(battery), battery_output_(battery_output),
+      battery_schedule_(settings.battery_sampling), monitor_(monitor)
 {
 }
 
@@ -138,37 +139,74 @@ void node_controller::run()
 void node_controller::sample_battery()
 {
 	const auto now_ms = common::ticks_to_ms(common::get_tick());
-	if (auto sampled = battery_.sample_if_due(now_ms); !sampled)
+	const auto source_changed = battery_.poll_power();
+	if (!source_changed)
 	{
-		(void)logger_.write("Battery sample failed: %u\r\n", static_cast<unsigned>(sampled.error().code));
-		if (battery_output_)
-		{
-			(void)battery_output_->submit_battery({});
-		}
 		return;
 	}
-	const auto latest = battery_.read();
-	if (!battery_output_ || !latest || published_battery_at_ == latest->sampled_at_ms)
+	if (*source_changed)
+	{
+		battery_schedule_.request(now_ms);
+	}
+	battery_schedule_.poll(now_ms);
+	const bool low_load = can_sample_battery(now_ms);
+	if (!battery_.sampling() && battery_schedule_.ready(now_ms, low_load))
+	{
+		battery_.begin_series(now_ms, !low_load);
+	}
+	const bool was_sampling = battery_.sampling();
+	if (was_sampling)
+	{
+		if (auto sampled = battery_.sample_step(now_ms, !low_load); !sampled)
+		{
+			(void)logger_.write("Battery sample failed: %u\r\n", static_cast<unsigned>(sampled.error().code));
+		}
+		if (!can_sample_battery(common::ticks_to_ms(common::get_tick())))
+		{
+			battery_.mark_loaded();
+		}
+		if (!battery_.sampling())
+		{
+			battery_schedule_.complete(now_ms, !battery_.needs_retry());
+		}
+	}
+	battery_.set_pending(battery_schedule_.pending());
+	const auto latest = battery_.current();
+	if (!battery_output_ || published_battery_at_ == latest.revision)
 	{
 		return;
 	}
 	using namespace bluetooth_battery;
 	const auto sent = battery_output_->submit_battery(snapshot{
-		.flags = static_cast<std::uint8_t>(reading_valid | (latest->usb_present ? usb_present : 0) |
-		    (latest->low_battery ? low_battery : 0)),
-		.level = latest->level_percent_estimate,
-		.battery_mv = latest->battery_mv,
-		.supply_mv = latest->supply_mv,
-		.battery_raw = latest->battery_raw,
-		.vrefint_raw = latest->vrefint_raw,
-		.minimum_raw = latest->battery_min_raw,
-		.maximum_raw = latest->battery_max_raw,
-		.age_ms = now_ms - latest->sampled_at_ms
+		.flags = static_cast<std::uint8_t>((latest.reading_valid ? reading_valid : 0) |
+		    (latest.usb_present ? usb_present : 0) | (latest.low_battery ? low_battery : 0) |
+		    (latest.update_pending ? update_pending : 0) | (latest.unstable ? unstable : 0) |
+		    (latest.reanchored ? estimate_adjusted : 0)),
+		.level = latest.level_percent_estimate,
+		.quality = latest.quality,
+		.battery_mv = latest.battery_mv,
+		.supply_mv = latest.supply_mv,
+		.battery_raw = latest.battery_raw,
+		.vrefint_raw = latest.vrefint_raw,
+		.minimum_raw = latest.battery_min_raw,
+		.maximum_raw = latest.battery_max_raw,
+		.age_ms = latest.reading_valid ? now_ms - latest.sampled_at_ms : 0
 	});
 	if (sent)
 	{
-		published_battery_at_ = latest->sampled_at_ms;
+		published_battery_at_ = latest.revision;
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+bool node_controller::can_sample_battery(std::uint32_t now_ms) const
+{
+#ifndef NO_STORAGE
+	return false;
+#else
+	return !gnss_.is_high_power_active(now_ms);
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -574,25 +612,32 @@ void node_controller::handle_read_voltage()
 
 void node_controller::handle_read_battery()
 {
+	const auto now_ms = common::ticks_to_ms(common::get_tick());
 	const auto latest = battery_.read();
 	if (!latest)
 	{
+		battery_schedule_.request(now_ms);
 		(void)reply("ERR BATTERY_UNAVAILABLE\r\n");
 		return;
 	}
-	const auto age_ms = common::ticks_to_ms(common::get_tick()) - latest->sampled_at_ms;
+	const auto age_ms = now_ms - latest->sampled_at_ms;
+	if (age_ms >= config_.battery_refresh_age_ms)
+	{
+		battery_schedule_.request(now_ms);
+	}
 	(void)reply("battery_mv=%u level_percent_estimate=%u usb_present=%u low_battery=%u age=%lu ms\r\n",
 	            static_cast<unsigned>(latest->battery_mv),
 	            static_cast<unsigned>(latest->level_percent_estimate),
 	            static_cast<unsigned>(latest->usb_present),
 	            static_cast<unsigned>(latest->low_battery),
 	            static_cast<unsigned long>(age_ms));
-	(void)reply("supply_mv=%u battery_raw=%u vrefint_raw=%u min_raw=%u max_raw=%u\r\n",
+	(void)reply("supply_mv=%u battery_raw=%u vrefint_raw=%u min_raw=%u max_raw=%u q=%u\r\n",
 	            static_cast<unsigned>(latest->supply_mv),
 	            static_cast<unsigned>(latest->battery_raw),
 	            static_cast<unsigned>(latest->vrefint_raw),
 	            static_cast<unsigned>(latest->battery_min_raw),
-	            static_cast<unsigned>(latest->battery_max_raw));
+	            static_cast<unsigned>(latest->battery_max_raw),
+	            static_cast<unsigned>(latest->quality));
 }
 
 //////////////////////////////////////////////////////////////////////////
