@@ -24,8 +24,9 @@ public static class HistoryChartData
 
     public static IReadOnlyList<HistoryChartPoint> Select(SavedHistory saved, int limit)
     {
-        var records = limit > 0 ? saved.Records.Values.TakeLast(limit) : saved.Records.Values;
-        return records.Select(item => new HistoryChartPoint(item.Record.Id, item.EstimatedUtc,
+        var timedRecords = saved.Records.Values.Where(item => item.EstimatedUtc.HasValue);
+        var records = limit > 0 ? timedRecords.TakeLast(limit) : timedRecords;
+        return records.Select(item => new HistoryChartPoint(item.Record.Id, item.EstimatedUtc!.Value,
             item.Record.EnvironmentValid ? item.Record.Temperature : null,
             item.Record.EnvironmentValid && item.Record.PressurePa.HasValue ? item.Record.PressurePa.Value / 100.0 : null)).ToArray();
     }

@@ -48,6 +48,7 @@ status node_controller::start()
 	{
 		return fail(component::rtos, error_code::out_of_memory);
 	}
+	next_telemetry_id_ = telemetry_.next_sample_id();
 	auto created = task_create(task_entry, "node", configMINIMAL_STACK_SIZE * 4,
 	                           this, tskIDLE_PRIORITY + 1);
 	if (!created)

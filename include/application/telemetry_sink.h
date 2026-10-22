@@ -18,6 +18,7 @@ class telemetry_sink
 public:
 	virtual ~telemetry_sink() = default;
 	virtual status submit(const telemetry_sample &sample) = 0;
+	[[nodiscard]] virtual sequence_t next_sample_id() const { return 1; }
 	virtual status acknowledge(sequence_t)
 	{
 		return fail(component::service, error_code::not_implemented);

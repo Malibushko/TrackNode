@@ -7,6 +7,7 @@
 #include "platform/hal.h"
 #include "core/hardware_object.h"
 #include "drivers/gpio.h"
+#include "semphr.h"
 
 struct spi_bus_config
 {
@@ -53,12 +54,15 @@ public:
     }
 
 	status set_baud_rate_prescaler(uint32_t prescaler);
+    void lock_transaction();
+    void unlock_transaction();
 
 private:
     status validate_transfer(std::size_t size) const;
 
     handle_t spi_handle;
     spi_bus_config config_;
+    SemaphoreHandle_t transaction_mutex_ = nullptr;
     bool attempted_{ false };
     bool initialized_ = false;
 };

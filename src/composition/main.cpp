@@ -7,6 +7,8 @@
 #include "platform/hardware.h"
 #include "application/node_controller.h"
 #include "drivers/devices/neo6m.h"
+#include "drivers/devices/w25qxx.h"
+#include "drivers/spi_bus.h"
 #include "drivers/uart.h"
 #include "drivers/usb_cdc_serial_device.h"
 #include "infrastructure/console_service.h"
@@ -66,13 +68,35 @@ status initialize_platform()
 
 //////////////////////////////////////////////////////////////////////////
 
+spi_bus &telemetry_flash_bus()
+{
+	static spi_bus bus{spi_bus_config{
+	    .instance = SPI1,
+	    .baud_rate_prescaler = SPI_BAUDRATEPRESCALER_8,
+	    .pin_sck = {GPIOB, GPIO_PIN_3},
+	    .pin_miso = {GPIOB, GPIO_PIN_4},
+	    .pin_mosi = {GPIOB, GPIO_PIN_5}
+	}};
+	return bus;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status configure_telemetry_journal(firmware_composition &application)
 {
-	static telemetry_journal_service journal{application.telemetry, telemetry_archive_config{}, {
+	static w25qxx flash{telemetry_flash_bus(), spi_device_config{
+	    .cs_pin = {GPIOB, GPIO_PIN_10}
+	}};
+	static telemetry_journal_service journal{application.telemetry, flash, telemetry_archive_config{}, {
 		HAL_GetUIDw0(),
 		HAL_GetUIDw1(),
 		HAL_GetUIDw2()
 	}};
+	if (auto added = application.devices.add("storage_bus", telemetry_flash_bus(), component_startup::initialize)
+	    .and_then([&]{ return application.devices.add("telemetry_journal", journal, component_startup::initialize); }); !added)
+	{
+		return added;
+	}
 	application.journal = &journal;
 	return {};
 }
@@ -242,20 +266,11 @@ status configure_storage(firmware_composition &application)
 		return fail(component::service, error_code::invalid_config);
 	}
 
-	static spi_bus bus{spi_bus_config{
-	    .instance = SPI1,
-	    .baud_rate_prescaler = SPI_BAUDRATEPRESCALER_256,
-	    .pin_sck = {GPIOB, GPIO_PIN_3},
-	    .pin_miso = {GPIOB, GPIO_PIN_4},
-	    .pin_mosi = {GPIOB, GPIO_PIN_5}
-	}};
-
-	static sd_card card{bus, spi_device_config{
+	static sd_card card{telemetry_flash_bus(), spi_device_config{
 	    .cs_pin = {GPIOA, GPIO_PIN_15}
 	}};
 
-	auto added = application.devices.add("storage_bus", bus, component_startup::initialize)
-	    .and_then([&]{ return application.devices.add("storage", card, component_startup::defer); });
+	auto added = application.devices.add("storage", card, component_startup::defer);
 
 	if (!added)
 	{

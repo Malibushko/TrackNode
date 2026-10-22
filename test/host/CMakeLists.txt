@@ -133,6 +133,7 @@ add_test(NAME xiao_ble_bridge_test COMMAND xiao_ble_bridge_test)
 
 add_executable(bluetooth_service_test bluetooth_service_test.cpp
     "${PROJECT_SOURCE_DIR}/src/infrastructure/telemetry_journal_service.cpp"
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/telemetry_flash_journal.cpp"
     "${PROJECT_SOURCE_DIR}/src/infrastructure/telemetry_history_protocol.cpp"
     "${PROJECT_SOURCE_DIR}/src/infrastructure/bluetooth_service.cpp"
     "${PROJECT_SOURCE_DIR}/src/infrastructure/diagnostic_log.cpp"
@@ -145,6 +146,7 @@ add_test(NAME bluetooth_service_test COMMAND bluetooth_service_test)
 
 add_executable(telemetry_history_test telemetry_history_test.cpp
     "${PROJECT_SOURCE_DIR}/src/infrastructure/telemetry_journal_service.cpp"
+    "${PROJECT_SOURCE_DIR}/src/infrastructure/telemetry_flash_journal.cpp"
     "${PROJECT_SOURCE_DIR}/src/infrastructure/telemetry_history_protocol.cpp")
 target_include_directories(telemetry_history_test BEFORE PRIVATE history_fakes bluetooth_fakes)
 target_link_libraries(telemetry_history_test PRIVATE host_headers)

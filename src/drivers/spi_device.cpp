@@ -2,6 +2,8 @@
 
 #include "drivers/gpio.h"
 
+#include <algorithm>
+
 spi_device::spi_device(spi_bus &bus, spi_device_config config) :
 	bus_(bus),
 	config_(config),
@@ -38,7 +40,7 @@ status spi_device::read_registers(uint8_t first_register, std::span<uint8_t> des
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	spi_cs_guard guard{pin_cs};
+	spi_cs_guard guard{bus_, pin_cs};
 
 	const uint8_t cmd = first_register | config_.read_flag;
 
@@ -64,7 +66,7 @@ status spi_device::write_register(uint8_t register_address, uint8_t value, uint3
 	const uint8_t cmd = register_address & static_cast<uint8_t>(~config_.read_flag);
 	const uint8_t buf[2] = { cmd, value };
 
-	const spi_cs_guard guard(pin_cs);
+	const spi_cs_guard guard(bus_, pin_cs);
 	return bus_.transmit(buf, timeout);
 }
 

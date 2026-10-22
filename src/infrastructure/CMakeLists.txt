@@ -1,5 +1,6 @@
 target_sources(${TRACK_NODE_TARGET} PRIVATE
     telemetry_journal_service.cpp
+    telemetry_flash_journal.cpp
     console_service.cpp
     command_parser.cpp
     track_node_control_protocol.cpp

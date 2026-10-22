@@ -49,7 +49,8 @@ enum class telemetry_history_error
 	invalid_cursor,
 	transfer_busy,
 	invalid_acknowledgement,
-	records_overwritten
+	records_overwritten,
+	storage_unavailable
 };
 
 class telemetry_history_protocol

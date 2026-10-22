@@ -1,4 +1,5 @@
 #include "infrastructure/telemetry_journal_service.h"
+#include "semphr.h"
 #include "task.h"
 #include "libs/freertos/freertos_helpers.h"
 #include <algorithm>
@@ -9,9 +10,47 @@ namespace
 	class journal_lock
 	{
 	public:
-		journal_lock() { taskENTER_CRITICAL(); }
-		~journal_lock() { taskEXIT_CRITICAL(); }
+		explicit journal_lock(SemaphoreHandle_t mutex) : mutex_(mutex)
+		{
+			if (mutex_)
+			{
+				xSemaphoreTake(mutex_, portMAX_DELAY);
+			}
+		}
+		~journal_lock()
+		{
+			if (mutex_)
+			{
+				xSemaphoreGive(mutex_);
+			}
+		}
+	private:
+		SemaphoreHandle_t mutex_;
 	};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status telemetry_journal_service::init()
+{
+	if (lock_)
+	{
+		return fail(component::service, error_code::already_initialized);
+	}
+	lock_ = xSemaphoreCreateMutex();
+	if (!lock_)
+	{
+		return fail(component::rtos, error_code::out_of_memory);
+	}
+	if (auto initialized = journal_.init(flash_); !initialized)
+	{
+		storage_failure_ = initialized.error();
+		return {};
+	}
+	storage_available_ = true;
+	boot_epoch_ = journal_.session_id();
+	last_received_sample_id_ = journal_.next_sample_id() - 1;
+	return {};
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -27,7 +66,11 @@ status telemetry_journal_service::submit(const telemetry_sample &sample)
 
 status telemetry_journal_service::acknowledge(sequence_t sample_id)
 {
-	journal_lock lock;
+	journal_lock lock{lock_};
+	if (!storage_available_)
+	{
+		return fail(component::service, error_code::not_ready);
+	}
 	if (sample_id == 0)
 	{
 		return fail(component::service, error_code::invalid_argument);
@@ -49,7 +92,10 @@ status telemetry_journal_service::acknowledge(sequence_t sample_id)
 	{
 		return fail(component::service, error_code::invalid_argument);
 	}
-	journal_.truncate_through(sample_id);
+	if (auto acknowledged = journal_.acknowledge(sample_id); !acknowledged)
+	{
+		return acknowledged;
+	}
 	confirmed_through_sample_id_ = sample_id;
 	return {};
 }
@@ -76,6 +122,10 @@ std::string_view telemetry_journal_service::handle_history_command(std::string_v
 	if (!command)
 	{
 		return telemetry_history_protocol::error_response(telemetry_history_error::invalid_syntax);
+	}
+	if (!storage_available_)
+	{
+		return telemetry_history_protocol::error_response(telemetry_history_error::storage_unavailable);
 	}
 	if (sending_page_)
 	{
@@ -212,6 +262,10 @@ telemetry_record telemetry_journal_service::pack_sample(const telemetry_sample &
 
 status telemetry_journal_service::archive(const telemetry_sample &sample)
 {
+	if (!storage_available_)
+	{
+		return {};
+	}
 	const auto sample_id_not_increasing = sample.id == 0 || sample.id <= last_received_sample_id_;
 	if (sample_id_not_increasing)
 	{
@@ -219,17 +273,17 @@ status telemetry_journal_service::archive(const telemetry_sample &sample)
 	}
 	std::uint64_t uptime;
 	{
-		journal_lock lock;
+		journal_lock lock{lock_};
 		uptime = update_uptime();
 	}
 	const auto record = pack_sample(sample, uptime);
 	if (policy_.should_archive(record))
 	{
 		{
-			journal_lock lock;
-			if (!journal_.append(record))
+			journal_lock lock{lock_};
+			if (auto appended = journal_.append(record); !appended)
 			{
-				return fail(component::service, error_code::invalid_argument);
+				return appended;
 			}
 		}
 		policy_.on_archived(record);
@@ -249,13 +303,9 @@ std::string_view telemetry_journal_service::handle_open_snapshot(sequence_t nonc
 	telemetry_journal_summary summary;
 	std::uint32_t seconds;
 	{
-		journal_lock lock;
+		journal_lock lock{lock_};
 		seconds = static_cast<std::uint32_t>(update_uptime() / configTICK_RATE_HZ);
 		summary = journal_.summary();
-	}
-	if (boot_epoch_ == 0)
-	{
-		boot_epoch_ = nonce;
 	}
 	sync_session_ = session;
 	read_after_sample_id_ = 0;
@@ -283,14 +333,18 @@ std::string_view telemetry_journal_service::handle_read_page(sequence_t after_sa
 		return telemetry_history_protocol::error_response(telemetry_history_error::invalid_cursor);
 	}
 	{
-		journal_lock lock;
+		journal_lock lock{lock_};
 		const auto records_overwritten_during_sync = journal_.summary().overwritten_count != snapshot_overwritten_count_;
 		if (records_overwritten_during_sync)
 		{
 			return telemetry_history_protocol::error_response(telemetry_history_error::records_overwritten);
 		}
 		const auto page = journal_.read(after_sample_id, snapshot_last_sample_id_);
-		if (!page || page->count == 0)
+		if (!page)
+		{
+			return telemetry_history_protocol::error_response(telemetry_history_error::storage_unavailable);
+		}
+		if (page->count == 0)
 		{
 			return telemetry_history_protocol::error_response(telemetry_history_error::records_overwritten);
 		}

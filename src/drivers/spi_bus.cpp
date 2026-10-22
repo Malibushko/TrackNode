@@ -63,6 +63,14 @@ status spi_bus::init()
     }
 
     attempted_ = true;
+	if (!transaction_mutex_)
+	{
+		transaction_mutex_ = xSemaphoreCreateMutex();
+	}
+	if (!transaction_mutex_)
+	{
+		return fail(component::rtos, error_code::out_of_memory);
+	}
 
     if (config_.instance == nullptr || !enable_spi_clock(config_.instance)) {
         return fail(component::spi_bus, error_code::invalid_config);
@@ -121,6 +129,26 @@ status spi_bus::init()
 
 //////////////////////////////////////////////////////////////////////////
 
+void spi_bus::lock_transaction()
+{
+	if (transaction_mutex_)
+	{
+		(void)xSemaphoreTake(transaction_mutex_, portMAX_DELAY);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void spi_bus::unlock_transaction()
+{
+	if (transaction_mutex_)
+	{
+		(void)xSemaphoreGive(transaction_mutex_);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status spi_bus::transmit(std::span<const uint8_t> data, uint32_t timeout)
 {
     if (const status s = validate_transfer(data.size()); !s) {
@@ -159,15 +187,21 @@ status spi_bus::transmit_receive(std::span<const uint8_t> tx, std::span<uint8_t>
 
 status spi_bus::set_baud_rate_prescaler(uint32_t prescaler)
 {
+	if (!initialized_)
+	{
+		return fail(component::spi_bus, error_code::not_initialized);
+	}
 	if (!IS_SPI_BAUDRATE_PRESCALER(prescaler))
 	{
 		return fail(component::spi_bus, error_code::invalid_argument);
 	}
 
+	lock_transaction();
 	__HAL_SPI_DISABLE(&spi_handle);
 	MODIFY_REG(spi_handle.Instance->CR1, SPI_CR1_BR, prescaler);
 	spi_handle.Init.BaudRatePrescaler = prescaler;
 	__HAL_SPI_ENABLE(&spi_handle);
+	unlock_transaction();
 
 	return {};
 }

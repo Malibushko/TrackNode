@@ -1,6 +1,7 @@
 #include "drivers/devices/sd_card.h"
 
 #include "common/common.h"
+#include "common/scope_guard.h"
 #include "misc/bits_utils"
 
 enum CMD
@@ -24,6 +25,8 @@ static constexpr uint8_t MAX_ATTEMPTS = 8;
 status sd_card::init()
 {
 	sector_count_ = 0;
+	const auto operating_prescaler = bus_.handle().Init.BaudRatePrescaler;
+	common::scope_guard restore_shared_bus_speed{[&]{ (void)bus_.set_baud_rate_prescaler(operating_prescaler); }};
 	auto init_status = initialized_ ? ::status{} : spi_device::init();
 	if (init_status)
 	{
@@ -93,6 +96,7 @@ status sd_card::init()
 	{
 		return result;
 	}
+	restore_shared_bus_speed.release();
 
 	return {};
 }
@@ -137,7 +141,7 @@ status sd_card::go_idle_state(r1_t &r1, uint32_t timeout)
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	spi_cs_guard guard(pin_cs);
+	spi_cs_guard guard(bus_, pin_cs);
 	if (auto status = send_command(CMD0, 0x95, timeout, r1); !status)
 	{
 		return status;
@@ -155,7 +159,7 @@ status sd_card::app_send_op_cond(bool host_capacity_support, r1_t &r1, uint32_t 
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	spi_cs_guard guard{pin_cs};
+	spi_cs_guard guard{bus_, pin_cs};
 
 	uint32_t argument{};
 
@@ -193,7 +197,7 @@ status sd_card::send_if_cond(uint32_t timeout)
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	spi_cs_guard guard{pin_cs};
+	spi_cs_guard guard{bus_, pin_cs};
 
 	r7_t cmd8_response{};
 
@@ -237,7 +241,7 @@ status sd_card::send_csd(std::span<uint8_t, 16> csd, r1_t &r1, uint32_t timeout)
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	spi_cs_guard guard{ pin_cs };
+	spi_cs_guard guard{bus_, pin_cs};
 
 	auto status = send_command(CMD9, DEFAULT_CRC, timeout, r1)
 						.and_then([&] { return validate_response(r1); });
@@ -340,7 +344,7 @@ status sd_card::read_single_block(uint32_t address, std::span<uint8_t> data, r1_
 		return fail(component::spi_device, error_code::invalid_argument);
 	}
 
-	spi_cs_guard guard{ pin_cs };
+	spi_cs_guard guard{bus_, pin_cs};
 
 	auto status = send_command(CMD17, address, DEFAULT_CRC, timeout, r1)
 						.and_then([&] { return validate_response(r1); });
@@ -443,7 +447,7 @@ status sd_card::write_block(uint32_t address, std::span<const uint8_t> data, r1_
 		return fail(component::spi_device, error_code::invalid_argument);
 	}
 
-	spi_cs_guard guard{pin_cs};
+	spi_cs_guard guard{bus_, pin_cs};
 
 	auto result = send_command(CMD24, address, DEFAULT_CRC, timeout, r1)
 					.and_then([&] { return validate_response(r1); });
@@ -520,7 +524,7 @@ status sd_card::app_cmd(r1_t &r1, uint32_t timeout)
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	spi_cs_guard guard{pin_cs};
+	spi_cs_guard guard{bus_, pin_cs};
 
 	auto status = send_command(CMD55, DEFAULT_CRC, timeout, r1)
 					.and_then([&]{ return validate_response(r1); })
@@ -538,7 +542,7 @@ status sd_card::read_ocr(r3_t &response, uint32_t timeout)
 		return fail(component::spi_device, error_code::not_initialized);
 	}
 
-	spi_cs_guard guard{pin_cs};
+	spi_cs_guard guard{bus_, pin_cs};
 	return send_command(CMD58, DEFAULT_CRC, timeout, response)
 				.and_then([&] { return validate_response(response.r1); });
 }

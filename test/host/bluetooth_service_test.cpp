@@ -540,19 +540,22 @@ int main()
 	fake_backend history_backend;
 	fake_commands history_commands;
 	telemetry_router<1> live_router;
-	telemetry_journal_service journal{live_router};
+	w25qxx history_flash;
+	telemetry_journal_service journal{live_router, history_flash};
+	require(journal.init().has_value());
+	const auto history_base = journal.next_sample_id() - 1;
 	bluetooth_service history_service{history_backend, history_commands, logger, monitor, {}, nullptr, &journal};
 	require(live_router.add(history_service).has_value());
 	live_router.seal();
 	require(history_service.start().has_value());
 	telemetry_sample archived_sample;
-	archived_sample.id = 10;
+	archived_sample.id = history_base + 10;
 	archived_sample.sensor = {fake_ticks, 1, 20, 100000, true};
 	require(journal.submit(archived_sample).has_value());
-	archived_sample.id = 11;
+	archived_sample.id = history_base + 11;
 	archived_sample.sensor.temperature_c = 20.1f;
 	require(journal.submit(archived_sample).has_value());
-	archived_sample.id = 42;
+	archived_sample.id = history_base + 42;
 	archived_sample.sensor.temperature_c = 21;
 	require(journal.submit(archived_sample).has_value());
 	history_backend.events.push_back({.type = bluetooth_event::kind::link_changed, .link = {true, true, 20, 800}});
@@ -562,13 +565,13 @@ int main()
 	{
 		history_backend.events.push_back({});
 	}
-	history_backend.events.push_back(receive("H A 000000000000002A", 800));
+	history_backend.events.push_back(receive("H A 000000010000002A", 800));
 	history_backend.events.push_back(receive("H O 0000000000000044", 800));
 	history_backend.before_event = [&](const bluetooth_event &event)
 	{
 		if (event.type == bluetooth_event::kind::received && event.payload[2] == 'A')
 		{
-			archived_sample.id = 100;
+			archived_sample.id = history_base + 100;
 			archived_sample.sensor.temperature_c = 22;
 			require(journal.submit(archived_sample).has_value());
 		}
@@ -584,10 +587,10 @@ int main()
 		require(chunk.size() <= 20);
 		text += chunk;
 	}
-	require(text.find("H B 0000000000000000 000000000000002A 00000002\r\n") != std::string::npos);
-	require(text.find("H D 000000000000000B") == std::string::npos);
-	require(text.find("H A 000000000000002A\r\n") != std::string::npos);
-	require(text.find("0000000000000064 0000000000000064 00000001") != std::string::npos);
+	require(text.find("H B 0000000000000000 000000010000002A 00000002\r\n") != std::string::npos);
+	require(text.find("H D 000000010000000B") == std::string::npos);
+	require(text.find("H A 000000010000002A\r\n") != std::string::npos);
+	require(text.find("0000000100000064 0000000100000064 00000001") != std::string::npos);
 	require(!history_backend.measurements.empty() && history_commands.received.empty());
 	history_service.stop();
 

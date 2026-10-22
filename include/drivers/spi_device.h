@@ -15,29 +15,38 @@ struct spi_device_config
 class spi_cs_guard
 {
 public:
-	explicit spi_cs_guard(gpio& pin_cs) : pin_cs(pin_cs)
+	spi_cs_guard(spi_bus &bus, gpio& pin_cs) : bus_(bus), pin_cs(pin_cs)
 	{
-		auto status = pin_cs.write(gpio::state::set);
-		if (!status)
+		bus_.lock_transaction();
+		locked_ = true;
+		if (pin_cs.write(gpio::state::set))
 		{
-			has_error = true;
+			active_ = true;
 		}
 	}
 
 	~spi_cs_guard()
 	{
-		if (!has_error)
+		if (active_)
 		{
 			(void)pin_cs.write(gpio::state::reset);
 		}
+		if (locked_)
+		{
+			bus_.unlock_transaction();
+		}
 	}
+
+	[[nodiscard]] bool asserted() const { return active_; }
 
 	spi_cs_guard(const spi_cs_guard &) = delete;
 	spi_cs_guard &operator=(const spi_cs_guard &) = delete;
 
 private:
+	spi_bus &bus_;
 	gpio& pin_cs;
-	bool has_error = false;
+	bool locked_ = false;
+	bool active_ = false;
 };
 
 class spi_device

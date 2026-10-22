@@ -1,6 +1,7 @@
 target_sources(${TRACK_NODE_TARGET} PRIVATE
     bmp280.cpp
     neo6m.cpp
+    w25qxx.cpp
 )
 
 if(TRACK_NODE_ENABLE_LORA)

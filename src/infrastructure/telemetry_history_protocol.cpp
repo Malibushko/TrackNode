@@ -181,6 +181,8 @@ std::string_view telemetry_history_protocol::error_response(telemetry_history_er
 			return "ERR HISTORY_ACK\r\n";
 		case telemetry_history_error::records_overwritten:
 			return "ERR HISTORY_GAP\r\n";
+		case telemetry_history_error::storage_unavailable:
+			return "ERR HISTORY_STORAGE\r\n";
 	}
 	return "ERR HISTORY_SYNTAX\r\n";
 }

@@ -3,18 +3,29 @@
 #include "application/telemetry_sink.h"
 #include "application/telemetry_archive_policy.h"
 #include "infrastructure/telemetry_history_protocol.h"
+#include "infrastructure/telemetry_flash_journal.h"
+
+#include "FreeRTOS.h"
+#include "semphr.h"
+
+#include <optional>
 
 class telemetry_journal_service final : public telemetry_sink
 {
 public:
-	explicit telemetry_journal_service(telemetry_sink &downstream, telemetry_archive_config config = {},
+	explicit telemetry_journal_service(telemetry_sink &downstream, w25qxx &flash, telemetry_archive_config config = {},
 		std::array<std::uint32_t, 3> device_id = {})
-		: downstream_(downstream), policy_(config), device_id_(device_id) {}
+		: downstream_(downstream), flash_(flash), policy_(config), device_id_(device_id) {}
 
+	status init();
 	status submit(const telemetry_sample &sample) override;
 	status acknowledge(sequence_t sample_id) override;
+	[[nodiscard]] sequence_t next_sample_id() const override { return journal_.next_sample_id(); }
 
 	void set_power_mode(power_mode mode) override;
+
+	[[nodiscard]] bool storage_available() const { return storage_available_; }
+	[[nodiscard]] std::optional<error> storage_failure() const { return storage_failure_; }
 
 	[[nodiscard]] bool can_handle_command(std::string_view text) const;
 	std::string_view handle_history_command(std::string_view text, std::uint32_t session);
@@ -36,9 +47,13 @@ private:
 
 private:
 	telemetry_sink &downstream_;
+	w25qxx &flash_;
+	telemetry_flash_journal journal_;
 	telemetry_archive_policy policy_;
-	telemetry_journal<1024> journal_;
 	const std::array<std::uint32_t, 3> device_id_;
+	SemaphoreHandle_t lock_ = nullptr;
+	bool storage_available_ = false;
+	std::optional<error> storage_failure_;
 
 	TickType_t previous_tick_ = 0;
 	std::uint64_t elapsed_ticks_ = 0;

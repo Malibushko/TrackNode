@@ -24,7 +24,8 @@ public sealed record HistorySnapshot(string DeviceId, ulong Epoch, uint UptimeSe
         var count = HistoryWire.Hex(fields[8], 8);
         var overwritten = HistoryWire.Hex(fields[9]);
         var emptyBounds = count == 0 && first == 0 && last == 0;
-        var populatedBounds = count is > 0 and <= 1024 && first != 0 && first <= last && last - first + 1 >= count;
+        const int MaxFlashJournalRecords = 258_048;
+        var populatedBounds = count is > 0 and <= MaxFlashJournalRecords && first != 0 && first <= last && last - first + 1 >= count;
         if (epoch == 0 || !(emptyBounds || populatedBounds))
             throw new InvalidDataException("Invalid history bounds.");
         return new(fields[3].ToUpperInvariant(), epoch, (uint)uptime, first, last, (int)count, overwritten, phoneUtc, roundTripSeconds);
@@ -87,7 +88,8 @@ public sealed record HistoryPage(ulong AfterSampleId, ulong LastSampleId, IReadO
             if (id <= previousId || id < snapshot.First || id > last)
                 throw new InvalidDataException("History samples are out of order.");
             var record = HistoryRecord.Parse(id, fields[3]);
-            if (record.UptimeSeconds > snapshot.UptimeSeconds || record.PositionUptimeSeconds > snapshot.UptimeSeconds)
+            if (HistoryWire.SameSession(id, snapshot) &&
+                (record.UptimeSeconds > snapshot.UptimeSeconds || record.PositionUptimeSeconds > snapshot.UptimeSeconds))
                 throw new InvalidDataException("History timestamp exceeds its snapshot.");
             records.Add(record);
             previousId = id;
@@ -110,9 +112,15 @@ public static class HistoryWire
     }
 
     public static string Command(char operation, ulong value) => $"H {operation} {value:X16}";
+
+    public static bool SameSession(ulong sampleId, HistorySnapshot snapshot)
+    {
+        var legacySingleSession = (snapshot.First >> 32) == 0 && (snapshot.Last >> 32) == 0;
+        return (sampleId >> 32) == snapshot.Epoch || (legacySingleSession && sampleId <= uint.MaxValue);
+    }
 }
 
-public sealed record SavedHistoryRecord(HistoryRecord Record, DateTimeOffset EstimatedUtc, DateTimeOffset? EstimatedPositionUtc);
+public sealed record SavedHistoryRecord(HistoryRecord Record, DateTimeOffset? EstimatedUtc, DateTimeOffset? EstimatedPositionUtc);
 public sealed class SavedHistory
 {
     public string DeviceId { get; set; } = "";
@@ -126,11 +134,12 @@ public sealed class HistoryStore(string directory)
     public string SavePage(HistorySnapshot snapshot, HistoryPage page)
     {
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, $"{snapshot.DeviceId}-{snapshot.Epoch:X16}.json");
+        var path = Path.Combine(directory, $"{snapshot.DeviceId}.json");
         var saved = File.Exists(path) ? JsonSerializer.Deserialize<SavedHistory>(File.ReadAllText(path)) :
             new SavedHistory { DeviceId = snapshot.DeviceId, Epoch = snapshot.Epoch };
-        if (saved is null || saved.DeviceId != snapshot.DeviceId || saved.Epoch != snapshot.Epoch)
+        if (saved is null || saved.DeviceId != snapshot.DeviceId)
             throw new InvalidDataException("Local history identity mismatch.");
+        saved.Epoch = snapshot.Epoch;
         foreach (var record in page.Records)
         {
             if (saved.Records.TryGetValue(record.Id, out var existing))
@@ -138,8 +147,9 @@ public sealed class HistoryStore(string directory)
                 if (existing.Record.Raw != record.Raw) throw new InvalidDataException("Conflicting history record identity.");
                 continue;
             }
-            var utc = snapshot.PhoneUtc.AddSeconds((long)record.UptimeSeconds - snapshot.UptimeSeconds);
-            DateTimeOffset? positionUtc = record.PositionValid ?
+            var sameSession = HistoryWire.SameSession(record.Id, snapshot);
+            DateTimeOffset? utc = sameSession ? snapshot.PhoneUtc.AddSeconds((long)record.UptimeSeconds - snapshot.UptimeSeconds) : null;
+            DateTimeOffset? positionUtc = sameSession && record.PositionValid ?
                 snapshot.PhoneUtc.AddSeconds((long)record.PositionUptimeSeconds - snapshot.UptimeSeconds) : null;
             saved.Records.Add(record.Id, new(record, utc, positionUtc));
         }

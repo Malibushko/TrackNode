@@ -204,7 +204,7 @@ result<sx126x_status> sx126x_driver::read_status(uint32_t timeout_ms)
 		return tl::unexpected(status.error());
 	}
 
-	spi_cs_guard guard{nss_};
+	spi_cs_guard guard{bus_, nss_};
 
 	uint8_t status_data[2] = {0xC0, 0x00};
 	if (auto result = bus_.transmit_receive(std::span{status_data, 2}, std::span{status_data, 2}, timeout_ms); !result)
@@ -325,7 +325,7 @@ result<std::size_t> sx126x_driver::read_received_packet(std::span<uint8_t> buffe
 	const uint8_t status_tx[4] = { GET_RX_BUFFER_STATUS, 0, 0, 0 };
 	uint8_t status_rx[4] = {};
 	{
-		spi_cs_guard guard{nss_};
+		spi_cs_guard guard{bus_, nss_};
 		if (auto result = bus_.transmit_receive(status_tx, status_rx, timeout_ms); !result)
 			return tl::unexpected(result.error());
 	}
@@ -341,7 +341,7 @@ result<std::size_t> sx126x_driver::read_received_packet(std::span<uint8_t> buffe
 	const uint8_t read_header[3] = { READ_BUFFER, offset, 0 };
 	uint8_t ignored[3] = {};
 	{
-		spi_cs_guard guard{nss_};
+		spi_cs_guard guard{bus_, nss_};
 		if (auto result = bus_.transmit_receive(read_header, ignored, timeout_ms); !result)
 			return tl::unexpected(result.error());
 
@@ -401,7 +401,7 @@ status sx126x_driver::write_command(uint8_t opcode, std::span<const uint8_t> arg
 	}
 
 	{
-		spi_cs_guard guard{nss_};
+		spi_cs_guard guard{bus_, nss_};
 		if (auto result = bus_.transmit(std::span{&opcode, 1}, timeout_ms); !result)
 		{
 			return result;
@@ -429,7 +429,7 @@ status sx126x_driver::write_buffer(std::span<const uint8_t> payload, uint32_t ti
 	if (auto result = wait_busy(timeout_ms); !result)
 		return result;
 	{
-		spi_cs_guard guard{nss_};
+		spi_cs_guard guard{bus_, nss_};
 		const uint8_t header[2] = { WRITE_BUFFER, 0x00 };
 		if (auto result = bus_.transmit(header, timeout_ms); !result)
 			return result;
@@ -446,7 +446,7 @@ result<uint16_t> sx126x_driver::read_irq_status(uint32_t timeout_ms)
 	const uint8_t tx[4] = { GET_IRQ_STATUS, 0, 0, 0 };
 	uint8_t rx[4] = {};
 	{
-		spi_cs_guard guard{nss_};
+		spi_cs_guard guard{bus_, nss_};
 		if (auto result = bus_.transmit_receive(tx, rx, timeout_ms); !result)
 			return tl::unexpected(result.error());
 	}
