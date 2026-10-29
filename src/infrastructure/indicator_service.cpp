@@ -3,6 +3,7 @@
 namespace
 {
 constexpr TickType_t animation_step = pdMS_TO_TICKS(50);
+constexpr std::uint8_t startup_blinks = 3;
 }
 
 indicator_service::indicator_service(logger_service &logger, supervisor &monitor)
@@ -119,8 +120,23 @@ void indicator_service::run()
 			indicator_.start_blink(event, now);
 		}
 		update_once(now);
+		announce_startup_once(now);
 		wait_for_next_update();
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void indicator_service::announce_startup_once(TickType_t now)
+{
+	const auto started_successfully = monitor_.state() == program_state::ok;
+	if (startup_announced_ || !started_successfully)
+	{
+		return;
+	}
+
+	indicator_.start_blink(startup_blinks, now);
+	startup_announced_ = true;
 }
 
 //////////////////////////////////////////////////////////////////////////

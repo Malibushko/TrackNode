@@ -29,6 +29,7 @@ public: // Indicator API
 private: // Common task loop
 	static void task_entry(void *argument);
 	void run();
+	void announce_startup_once(TickType_t now);
 	void wait_for_next_update();
 
 private: // State
@@ -39,5 +40,6 @@ private: // State
 	QueueHandle_t inbox_ = nullptr;
 	TaskHandle_t task_ = nullptr;
 	std::atomic<bool> pairing_{false};
+	bool startup_announced_ = false;
 	std::atomic<bool> ready_{ false };
 };

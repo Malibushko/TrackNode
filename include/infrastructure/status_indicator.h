@@ -39,7 +39,7 @@ public:
 		{
 			state_ = state;
 			phase_ = phase::idle;
-			output_high_ = state == program_state::ok;
+			output_high_ = false;
 
 			if (state != program_state::ok)
 			{
@@ -55,7 +55,7 @@ public:
 			{
 				phase_ = phase::idle;
 				changed_at_ = now;
-				output_high_ = true;
+				output_high_ = pairing_;
 			}
 		}
 		if (pairing_ && now - changed_at_ >= 250u)
@@ -84,7 +84,7 @@ public:
 				else if (state_ == program_state::ok)
 				{
 					phase_ = phase::idle;
-					output_high_ = true;
+					output_high_ = false;
 				}
 				else
 				{
@@ -142,7 +142,7 @@ private:
 	phase phase_ = phase::idle;
 	uint32_t changed_at_ = 0;
 	uint16_t transitions_left_ = 0;
-	bool output_high_ = true;
+	bool output_high_ = false;
 	bool written_ = false;
 	bool pairing_ = false;
 	bool last_output_ = false;

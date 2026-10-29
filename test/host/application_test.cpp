@@ -7,7 +7,7 @@ int main()
 	gpio led;
 	status_indicator indicator{ led };
 	assert(indicator.update(0, program_state::ok));
-	assert(led.writes.back() == gpio::state::set);
+	assert(led.writes.back() == gpio::state::reset);
 	indicator.start_blink(2, 10);
 	assert(indicator.update(10, program_state::ok));
 	assert(led.writes.back() == gpio::state::reset);
@@ -18,8 +18,8 @@ int main()
 	assert(indicator.busy());
 	assert(indicator.update(760, program_state::ok));
 	assert(!indicator.busy());
-	assert(led.writes.size() == 7);
-	assert(led.writes.back() == gpio::state::set);
+	assert(led.writes.size() == 5);
+	assert(led.writes.back() == gpio::state::reset);
 
 	const uint32_t start = UINT32_MAX - 50;
 	indicator.start_blink(1, start);
@@ -55,7 +55,8 @@ int main()
 	assert(indicator.update(2750, program_state::ok, true));
 	assert(led.writes.back() == gpio::state::reset);
 	assert(indicator.update(2800, program_state::ok, false));
-	assert(led.writes.back() == gpio::state::set);
+	assert(led.writes.back() == gpio::state::reset);
+	assert(!indicator.animating());
 
-	std::puts("PASS: blink sequence, wraparound, error priority, GPIO failure");
+	std::puts("PASS: LED off while healthy, blink sequence, wraparound, error priority, GPIO failure");
 }
