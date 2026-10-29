@@ -67,11 +67,14 @@ int main()
 	require(serial.init().has_value());
 	require(rx_pull == GPIO_PULLUP && tx_pull == GPIO_NOPULL);
 	std::uint8_t byte = 42;
+	int listener = 0;
+	serial.set_rx_listener(&listener);
 
 	fake_wait_hook = receive_error_then_complete_tx;
 	require(serial.write(&byte, 1).has_value());
 	require(fake_notifications == 1 && fake_tx_aborts == 0);
 	require(serial.handle().ErrorCode == HAL_UART_ERROR_NONE);
+	require(fake_task_events == 1);
 	auto received = serial.read(&byte, 1, 0);
 	require(!received && received.error().hal_detail == (HAL_UART_ERROR_FE | HAL_UART_ERROR_NE));
 	require(serial.read(&byte, 1, 0).has_value());

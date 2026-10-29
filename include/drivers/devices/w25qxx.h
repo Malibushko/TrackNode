@@ -2,6 +2,7 @@
 
 #include "drivers/spi_device.h"
 
+#include <array>
 #include <cstdint>
 #include <span>
 
@@ -20,6 +21,7 @@ public:
 
 	[[nodiscard]] std::uint32_t capacity_bytes() const { return capacity_bytes_; }
 	[[nodiscard]] std::uint8_t manufacturer_id() const { return manufacturer_id_; }
+	[[nodiscard]] std::array<std::uint8_t, 3> jedec_id() const { return jedec_id_; }
 
 private:
 	status write_enable();
@@ -32,6 +34,7 @@ private:
 	void pause_one_millisecond() const;
 
 private:
+	std::array<std::uint8_t, 3> jedec_id_{};
 	std::uint32_t capacity_bytes_ = 0;
 	std::uint8_t manufacturer_id_ = 0;
 	bool identified_ = false;

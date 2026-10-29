@@ -18,13 +18,18 @@ public: // Common lifecycle
 public: // Indicator API
 	status init_diagnostic();
 	status ping();
-	void set_pairing(bool active) { pairing_.store(active); }
+	void set_pairing(bool active)
+	{
+		pairing_.store(active);
+		signal_task_event(task_);
+	}
 	void update_once(TickType_t now);
 	[[nodiscard]] bool diagnostic_ready() const { return ready_.load(); }
 
 private: // Common task loop
 	static void task_entry(void *argument);
 	void run();
+	void wait_for_next_update();
 
 private: // State
 	gpio output_;

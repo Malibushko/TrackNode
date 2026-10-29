@@ -30,6 +30,7 @@ public:
 	[[nodiscard]] bool can_handle_command(std::string_view text) const;
 	std::string_view handle_history_command(std::string_view text, std::uint32_t session);
 	std::string_view next_history_response();
+	[[nodiscard]] bool history_response_pending() const { return sending_page_; }
 	void on_history_response_sent();
 	void reset_history_transfer();
 

@@ -19,6 +19,7 @@ enum class command_type : std::uint8_t
 	read_voltage,
 	bootload,
 	read_battery,
+	read_power,
 	error
 };
 

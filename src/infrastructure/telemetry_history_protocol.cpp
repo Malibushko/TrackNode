@@ -163,6 +163,24 @@ std::string_view telemetry_history_protocol::encode_acknowledgement(response_buf
 
 //////////////////////////////////////////////////////////////////////////
 
+std::string_view telemetry_history_protocol::encode_storage_failure(response_buffer &buffer,
+	const telemetry_history_storage_failure &failure)
+{
+	response_writer writer{buffer};
+	writer.append("ERR HISTORY_STORAGE ");
+	writer.append_hex(failure.component, 2);
+	writer.append(" ");
+	writer.append_hex(failure.code, 2);
+	writer.append(" ");
+	for (const auto byte : failure.jedec_id)
+	{
+		writer.append_hex(byte, 2);
+	}
+	return writer.finish();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 std::string_view telemetry_history_protocol::error_response(telemetry_history_error error)
 {
 	switch (error)

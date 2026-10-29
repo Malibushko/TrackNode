@@ -1,4 +1,12 @@
 #include "infrastructure/console_service.h"
+#include "libs/freertos/freertos_helpers.h"
+
+namespace
+{
+constexpr TickType_t disconnected_poll_interval = pdMS_TO_TICKS(10);
+constexpr TickType_t empty_poll_interval = pdMS_TO_TICKS(5);
+constexpr TickType_t failed_read_retry_interval = pdMS_TO_TICKS(1000);
+}
 
 status console_service::start()
 {
@@ -39,17 +47,21 @@ void console_service::task_entry(void *argument)
 
 void console_service::run()
 {
+	listen_to_wake_sources();
 	while (true)
 	{
 		const auto received = input_.read();
 		if (!received)
 		{
 			protocol_.reset();
-			if (received.error().code != error_code::not_ready)
+			const auto transport_failed = received.error().code != error_code::not_ready;
+			if (transport_failed)
 			{
 				monitor_.report(service_id::console, received.error(), service_health::degraded);
+				vTaskDelay(failed_read_retry_interval);
+				continue;
 			}
-			vTaskDelay(pdMS_TO_TICKS(10));
+			wait_for_input(disconnected_poll_interval);
 			continue;
 		}
 		if (*received)
@@ -58,13 +70,37 @@ void console_service::run()
 		}
 		else
 		{
-			vTaskDelay(pdMS_TO_TICKS(5));
+			wait_for_input(empty_poll_interval);
 		}
 		if (monitor_.health(service_id::console) == service_health::degraded)
 		{
 			monitor_.set_health(service_id::console, service_health::ready);
 		}
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void console_service::listen_to_wake_sources()
+{
+	const auto self = xTaskGetCurrentTaskHandle();
+	for (auto *source : wake_sources_)
+	{
+		source->set_listener(self);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void console_service::wait_for_input(TickType_t poll_interval)
+{
+	if (wake_sources_.empty())
+	{
+		vTaskDelay(poll_interval);
+		return;
+	}
+
+	(void)wait_task_event(portMAX_DELAY);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -48,6 +48,7 @@ public:
 	status sample_step(std::uint32_t now_ms, bool under_load);
 	void mark_loaded();
 	[[nodiscard]] bool sampling() const;
+	[[nodiscard]] std::uint32_t sample_interval_ms() const { return config_.sample_interval_ms; }
 	[[nodiscard]] bool needs_retry() const;
 	[[nodiscard]] snapshot current() const;
 	[[nodiscard]] result<snapshot> read() const;

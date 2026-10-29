@@ -41,6 +41,13 @@ struct telemetry_history_page_header
 	std::uint32_t record_count;
 };
 
+struct telemetry_history_storage_failure
+{
+	std::uint8_t component;
+	std::uint8_t code;
+	std::array<std::uint8_t, 3> jedec_id;
+};
+
 enum class telemetry_history_error
 {
 	invalid_syntax,
@@ -67,5 +74,6 @@ public:
 	[[nodiscard]] static std::string_view encode_record(response_buffer &buffer, const telemetry_record &record);
 	[[nodiscard]] static std::string_view encode_page_end(response_buffer &buffer, sequence_t last_sample_id);
 	[[nodiscard]] static std::string_view encode_acknowledgement(response_buffer &buffer, sequence_t last_sample_id);
+	[[nodiscard]] static std::string_view encode_storage_failure(response_buffer &buffer, const telemetry_history_storage_failure &failure);
 	[[nodiscard]] static std::string_view error_response(telemetry_history_error error);
 };

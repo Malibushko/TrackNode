@@ -45,6 +45,8 @@ private:
 	static void task_entry(void *argument);
 	void run();
 	status poll_and_process(bool &poll_failed);
+	[[nodiscard]] bool has_pending_work() const;
+	void wake_task();
 
 	status process_pairing_request();
 	status process_advertising();

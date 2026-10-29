@@ -11,6 +11,7 @@ struct bluetooth_config
 	static constexpr std::size_t log_line_storage_capacity = log_text_storage_capacity + sizeof("L,4294967295,\r\n") - 1;
 
 	std::uint32_t poll_timeout_ms = 20;
+	std::uint32_t idle_timeout_ms = 60000;
 	std::uint32_t reconnect_interval_ms = 1000;
 	std::uint32_t measurement_lifetime_ms = 120000;
 	std::size_t command_capacity = 64;

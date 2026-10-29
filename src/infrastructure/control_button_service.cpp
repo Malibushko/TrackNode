@@ -12,7 +12,7 @@ status control_button_service::start()
 	{
 		return validated;
 	}
-	if (const auto initialized = input_.init(); !initialized)
+	if (const auto initialized = input_.init().and_then([&]{ return edges_.init(); }); !initialized)
 	{
 		return initialized;
 	}
@@ -72,6 +72,7 @@ void control_button_service::task_entry(void *argument)
 
 void control_button_service::run()
 {
+	edges_.set_listener(xTaskGetCurrentTaskHandle());
 	for (;;)
 	{
 		const auto now = xTaskGetTickCount();
@@ -90,8 +91,21 @@ void control_button_service::run()
 			monitor_.report(service_id::control_button, outcome.error(), service_health::degraded);
 		}
 		monitor_.progress(service_id::control_button, now);
-		vTaskDelay(pdMS_TO_TICKS(config_.poll_ms));
+		wait_for_next_check();
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void control_button_service::wait_for_next_check()
+{
+	if (gesture_recognizer_.waiting_for_edge())
+	{
+		(void)wait_task_event(portMAX_DELAY);
+		return;
+	}
+
+	vTaskDelay(pdMS_TO_TICKS(config_.poll_ms));
 }
 
 //////////////////////////////////////////////////////////////////////////

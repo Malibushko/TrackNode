@@ -28,6 +28,11 @@ public:
 		return phase_ != phase::idle;
 	}
 
+	[[nodiscard]] bool animating() const
+	{
+		return busy() || pairing_;
+	}
+
 	status update(uint32_t now, program_state state, bool pairing = false)
 	{
 		if (state != state_)

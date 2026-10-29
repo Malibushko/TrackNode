@@ -222,6 +222,7 @@ status w25qxx::read_jedec_id()
 			return received;
 		}
 	}
+	jedec_id_ = id;
 	const auto bus_reads_floating_or_shorted = id[0] == 0x00 || id[0] == 0xFF;
 	const auto capacity_supported = id[2] >= minimum_capacity_code && id[2] <= maximum_capacity_code;
 	if (bus_reads_floating_or_shorted || !capacity_supported)

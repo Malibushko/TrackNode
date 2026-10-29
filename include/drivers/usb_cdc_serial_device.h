@@ -1,17 +1,19 @@
 #pragma once
 
+#include "core/task_event_source.h"
 #include "drivers/serial_device.h"
 #include "drivers/usb_cdc.h"
 
 #include <optional>
 
-class usb_cdc_serial_device final : public serial_device
+class usb_cdc_serial_device final : public serial_device, public task_event_source
 {
 public:
 	explicit usb_cdc_serial_device(usb_cdc &device) : serial_device(component::usb), device_(device) {}
 	status init();
 	result<std::size_t> read(std::uint8_t *data, std::size_t size, std::uint32_t timeout_ms = 0) override;
 	result<std::size_t> write(const std::uint8_t *data, std::size_t size, std::uint32_t timeout_ms = 100) override;
+	void set_listener(TaskHandle_t task) override { device_.set_receive_listener(task); }
 
 private:
 	result<bool> begin_write(const std::uint8_t *data, std::size_t size) override;

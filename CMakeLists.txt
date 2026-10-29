@@ -9,8 +9,11 @@ option(FAULT_INJECTION_ENABLE "Inject random faults to simulate real world condi
 option(PERF_MEASURING "Log scoped execution times" OFF)
 option(TRACK_NODE_DEBUG_IN_SLEEP "Keep the STM32 debug interface active during Sleep" OFF)
 option(TRACK_NODE_ENABLE_LORA "Include SX126x transport" OFF)
+option(TRACK_NODE_ENABLE_GNSS "Include NEO-6M GNSS service" OFF)
 option(TRACK_NODE_ENABLE_BLUETOOTH "Include unfinished Bluetooth scaffold" ON)
 option(NO_STORAGE "Build TrackNode without SD card and filesystem" ON)
+option(TRACK_NODE_POWER_STATS "Count task wakeups and CPU sleep for GET POWER" ON)
+option(TRACK_NODE_POWER_FLOOR "Build the power floor measurement firmware" ON)
 
 include(cmake/bluetooth.cmake)
 
@@ -74,7 +77,9 @@ if(CMAKE_CROSSCOMPILING)
 
     target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE
         TRACK_NODE_ENABLE_LORA=$<BOOL:${TRACK_NODE_ENABLE_LORA}>
-        TRACK_NODE_ENABLE_BLUETOOTH=$<BOOL:${TRACK_NODE_ENABLE_BLUETOOTH}>)
+        TRACK_NODE_ENABLE_GNSS=$<BOOL:${TRACK_NODE_ENABLE_GNSS}>
+        TRACK_NODE_ENABLE_BLUETOOTH=$<BOOL:${TRACK_NODE_ENABLE_BLUETOOTH}>
+        TRACK_NODE_POWER_STATS=$<BOOL:${TRACK_NODE_POWER_STATS}>)
 
     if(NO_STORAGE)
         target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE NO_STORAGE=1)
@@ -111,6 +116,10 @@ if(CMAKE_CROSSCOMPILING)
         )
     else()
         message(STATUS "STM32_Programmer_CLI not found; flash target unavailable")
+    endif()
+
+    if(TRACK_NODE_POWER_FLOOR)
+        include(cmake/power_floor.cmake)
     endif()
 else()
     enable_testing()

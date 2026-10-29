@@ -76,6 +76,7 @@ public:
 
 	[[nodiscard]] size_t available() const;
 	[[nodiscard]] uint32_t dropped_count() const;
+	void set_rx_listener(TaskHandle_t task);
 
 	[[nodiscard]] UART_HandleTypeDef &handle()
 	{
@@ -112,6 +113,7 @@ private:
 	std::atomic<tx_state> tx_state_{};
 	std::atomic<std::uint32_t> tx_error_detail_{0};
 	TaskHandle_t tx_waiter_{};
+	TaskHandle_t volatile rx_listener_ = nullptr;
 
 	std::array<uint8_t, rx_dma_buffer_capacity> rx_dma_buf_{};
 

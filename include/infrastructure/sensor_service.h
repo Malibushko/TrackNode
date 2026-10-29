@@ -12,6 +12,9 @@ public: // Sensor API
 	status init();
 	result<bmp280::environmental_sample> read();
 
+private: // Measurement
+	status convert_once();
+
 private: // State
 	bmp280 &device_;
 	bool initialized_ = false;

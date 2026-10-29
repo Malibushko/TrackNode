@@ -21,3 +21,6 @@ inline int usb_critical_depth = 0;
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY (5U << 4)
 #define taskENTER_CRITICAL() (++usb_critical_depth)
 #define taskEXIT_CRITICAL() do { assert(usb_critical_depth > 0); --usb_critical_depth; } while (0)
+inline unsigned usb_event_notifications = 0;
+inline void xTaskNotifyGiveIndexed(TaskHandle_t, unsigned) { ++usb_event_notifications; }
+inline void vTaskNotifyGiveIndexedFromISR(TaskHandle_t, unsigned, int *) { ++usb_event_notifications; }

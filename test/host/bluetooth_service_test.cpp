@@ -40,6 +40,7 @@ public:
 	unsigned initialized = 0;
 	unsigned advertisements = 0;
 	std::uint32_t last_poll_timeout_ms = 0;
+	std::vector<std::uint32_t> poll_timeouts;
 	bool fail_init = false;
 	bool busy_advertise = false;
 	bool restart_poll = false;
@@ -82,6 +83,7 @@ public:
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override
 	{
 		last_poll_timeout_ms = timeout_ms;
+		poll_timeouts.push_back(timeout_ms);
 		if (restart_poll)
 		{
 			restart_poll = false;
@@ -389,7 +391,10 @@ int main()
 	catch (const finished &)
 	{
 	}
-	require(fake_ticks - initial_ticks == 37 && custom_backend.last_poll_timeout_ms == 7);
+	const auto polled_quickly_while_work_pending = std::find(custom_backend.poll_timeouts.begin(),
+		custom_backend.poll_timeouts.end(), 7u) != custom_backend.poll_timeouts.end();
+	const auto idle_poll_waits_for_events = custom_backend.last_poll_timeout_ms == bluetooth_config{}.idle_timeout_ms;
+	require(fake_ticks - initial_ticks == 37 && polled_quickly_while_work_pending && idle_poll_waits_for_events);
 	text.clear();
 	for (const auto &chunk : custom_backend.chunks)
 	{
@@ -594,7 +599,43 @@ int main()
 	require(!history_backend.measurements.empty() && history_commands.received.empty());
 	history_service.stop();
 
-	for (unsigned field = 0; field < 14; ++field)
+	fake_backend idle_backend;
+	fake_commands idle_commands;
+	bluetooth_service idle_service{idle_backend, idle_commands, logger, monitor};
+	require(idle_service.start().has_value());
+	idle_backend.events.push_back(bluetooth_event{
+		.type = bluetooth_event::kind::link_changed,
+		.link = {true, true, 20, 70}
+	});
+	std::vector<std::uint32_t> timeouts_before_sample;
+	const auto task_events_before_sample = fake_task_events;
+	idle_backend.before_finish = [&]
+	{
+		timeouts_before_sample = idle_backend.poll_timeouts;
+		telemetry_sample sample{
+			.sensor = {
+				.sequence = 1,
+				.temperature_c = 21,
+				.pressure_pa = 100000,
+				.valid = true
+			}
+		};
+		require(idle_service.submit(sample).has_value());
+	};
+	try
+	{
+		fake_task(fake_argument);
+	}
+	catch (const finished &)
+	{
+	}
+	const auto idle_poll_waited_for_events = !timeouts_before_sample.empty() &&
+		timeouts_before_sample.back() == bluetooth_config{}.idle_timeout_ms;
+	const auto sample_woke_bluetooth_task = fake_task_events > task_events_before_sample;
+	require(idle_poll_waited_for_events && sample_woke_bluetooth_task && !idle_backend.measurements.empty());
+	idle_service.stop();
+
+	for (unsigned field = 0; field < 15; ++field)
 	{
 		bluetooth_config invalid;
 		switch (field)
@@ -613,6 +654,7 @@ int main()
 			case 11: invalid.task_priority = configMAX_PRIORITIES; break;
 			case 12: invalid.reply_queue_capacity = static_cast<std::size_t>(UINT32_MAX) + 1; break;
 			case 13: invalid.measurement_lifetime_ms = 0; break;
+			case 14: invalid.idle_timeout_ms = 0; break;
 		}
 		bluetooth_service invalid_service{backend, commands, logger, monitor, invalid};
 		const auto result = invalid_service.start();

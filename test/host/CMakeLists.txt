@@ -38,6 +38,11 @@ target_include_directories(battery_service_test BEFORE PRIVATE battery_fakes)
 target_link_libraries(battery_service_test PRIVATE host_headers)
 add_test(NAME battery_service_test COMMAND battery_service_test)
 
+add_executable(power_profile_test power_profile_test.cpp
+    "${PROJECT_SOURCE_DIR}/src/common/power_profile.cpp")
+target_link_libraries(power_profile_test PRIVATE host_headers)
+add_test(NAME power_profile_test COMMAND power_profile_test)
+
 add_executable(component_list_test component_list_test.cpp)
 target_link_libraries(component_list_test PRIVATE host_headers)
 add_test(NAME component_list_test COMMAND component_list_test)

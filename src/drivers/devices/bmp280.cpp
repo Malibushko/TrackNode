@@ -165,6 +165,19 @@ status bmp280::start_measurement()
 
 //////////////////////////////////////////////////////////////////////////
 
+uint32_t bmp280::max_measurement_time_ms() const
+{
+	const auto conversions = [](oversampling value) -> uint32_t {
+		return value == oversampling::skipped ? 0u : 1u << (static_cast<uint32_t>(value) - 1u);
+	};
+	const auto temperature_us = 2300u * conversions(config_.temp_oversample);
+	const auto pressure_us = config_.press_oversample == oversampling::skipped ? 0u : 2300u * conversions(config_.press_oversample) + 575u;
+	const auto total_us = 1250u + temperature_us + pressure_us;
+	return (total_us + 999u) / 1000u;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 result<bool> bmp280::is_measuring()
 {
 	i2c_device &i2c_transport = transport_;

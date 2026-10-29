@@ -1,5 +1,10 @@
 #include "infrastructure/indicator_service.h"
 
+namespace
+{
+constexpr TickType_t animation_step = pdMS_TO_TICKS(50);
+}
+
 indicator_service::indicator_service(logger_service &logger, supervisor &monitor)
     : output_(gpio_config{ .pin = { GPIOC, GPIO_PIN_13 },
                            .mode = GPIO_MODE_OUTPUT_PP,
@@ -77,6 +82,7 @@ status indicator_service::ping()
 	{
 		return fail(component::rtos, error_code::queue_full);
 	}
+	signal_task_event(task_);
 	return {};
 }
 
@@ -103,17 +109,26 @@ void indicator_service::task_entry(void *argument)
 
 void indicator_service::run()
 {
+	monitor_.set_state_listener(xTaskGetCurrentTaskHandle());
 	std::uint8_t event = 0;
 	while (true)
 	{
-		const auto received = xQueueReceive(inbox_, &event, pdMS_TO_TICKS(50));
 		const TickType_t now = xTaskGetTickCount();
-		if (received == pdPASS)
+		if (xQueueReceive(inbox_, &event, 0) == pdPASS)
 		{
 			indicator_.start_blink(event, now);
 		}
 		update_once(now);
+		wait_for_next_update();
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void indicator_service::wait_for_next_update()
+{
+	const auto animation_running = indicator_.animating() || uxQueueMessagesWaiting(inbox_) != 0;
+	(void)wait_task_event(animation_running ? animation_step : portMAX_DELAY);
 }
 
 //////////////////////////////////////////////////////////////////////////

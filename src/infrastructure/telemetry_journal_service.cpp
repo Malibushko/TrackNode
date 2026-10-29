@@ -125,7 +125,12 @@ std::string_view telemetry_journal_service::handle_history_command(std::string_v
 	}
 	if (!storage_available_)
 	{
-		return telemetry_history_protocol::error_response(telemetry_history_error::storage_unavailable);
+		const auto failure = storage_failure_.value_or(error{ component::storage, error_code::not_initialized });
+		return telemetry_history_protocol::encode_storage_failure(response_, {
+			.component = static_cast<std::uint8_t>(failure.component),
+			.code = static_cast<std::uint8_t>(failure.code),
+			.jedec_id = flash_.jedec_id()
+		});
 	}
 	if (sending_page_)
 	{

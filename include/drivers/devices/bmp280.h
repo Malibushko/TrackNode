@@ -70,6 +70,8 @@ public:
 
 	status start_measurement();
 	result<bool> is_measuring();
+	[[nodiscard]] bool measures_on_request() const { return config_.mode == run_mode::forced; }
+	[[nodiscard]] uint32_t max_measurement_time_ms() const;
 	result<environmental_sample> read_measurement();
 
 private:

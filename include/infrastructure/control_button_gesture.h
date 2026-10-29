@@ -58,6 +58,13 @@ public:
 		return std::nullopt;
 	}
 
+	[[nodiscard]] bool waiting_for_edge() const
+	{
+		const auto debounce_settled = candidate_ == stable_;
+		const auto no_hold_threshold_ahead = !stable_ || next_threshold_ >= hold_thresholds_ms_.size();
+		return debounce_settled && no_hold_threshold_ahead;
+	}
+
 private:
 	std::uint32_t debounce_ms_;
 	std::span<const std::uint32_t> hold_thresholds_ms_;

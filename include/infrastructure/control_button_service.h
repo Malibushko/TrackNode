@@ -1,6 +1,7 @@
 #pragma once
 
 #include "drivers/gpio.h"
+#include "drivers/gpio_interrupt.h"
 #include "infrastructure/control_button_gesture.h"
 #include "infrastructure/supervisor.h"
 #include "libs/freertos/freertos_helpers.h"
@@ -20,7 +21,8 @@ class control_button_service
 {
 public:
 	control_button_service(control_button_config config, bluetooth_service &bluetooth, supervisor &monitor)
-		: config_(config), input_(config.input), bluetooth_service_(bluetooth), monitor_(monitor),
+		: config_(config), input_(config.input), edges_(gpio_interrupt_config{.pin = config.input.pin, .pull = config.input.pull}),
+		  bluetooth_service_(bluetooth), monitor_(monitor),
 		  gesture_recognizer_(config.debounce_ms, config.hold_thresholds_ms) {}
 
 	status start();
@@ -31,6 +33,7 @@ private:
 
 	static void task_entry(void *argument);
 	void run();
+	void wait_for_next_check();
 
 	status handle_gesture(const control_button_gesture &gesture);
 	status handle_pairing_mode_gesture();
@@ -38,6 +41,7 @@ private:
 private:
 	control_button_config config_;
 	gpio input_;
+	gpio_interrupt edges_;
 	bluetooth_service &bluetooth_service_;
 	supervisor &monitor_;
 

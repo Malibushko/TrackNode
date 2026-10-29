@@ -103,7 +103,7 @@ void bluetooth_service::stop()
 
 status bluetooth_service::validate_config() const
 {
-	const auto invalid_timing = config_.poll_timeout_ms == 0 || config_.measurement_lifetime_ms == 0 ||
+	const auto invalid_timing = config_.poll_timeout_ms == 0 || config_.idle_timeout_ms == 0 || config_.measurement_lifetime_ms == 0 ||
 		pdMS_TO_TICKS(config_.reconnect_interval_ms) == 0;
 	const auto invalid_command_capacity = config_.command_capacity == 0 ||
 		config_.command_capacity > bluetooth_event{}.payload.size();
@@ -155,6 +155,7 @@ status bluetooth_service::on_pairing_mode_requested()
 	}
 	reset_session();
 	pairing_window_requested_.store(true);
+	wake_task();
 	return {};
 }
 
@@ -174,7 +175,9 @@ status bluetooth_service::submit(const telemetry_sample &sample)
 	{
 		return fail(component::service, error_code::not_initialized);
 	}
-	return from_freertos(xQueueOverwrite(samples_, &sample));
+	const auto queued = from_freertos(xQueueOverwrite(samples_, &sample));
+	wake_task();
+	return queued;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -193,7 +196,9 @@ status bluetooth_service::submit_battery(const bluetooth_battery::snapshot &valu
 		.value = value,
 		.received_at = xTaskGetTickCount()
 	};
-	return from_freertos(xQueueOverwrite(batteries_, &queued));
+	const auto accepted = from_freertos(xQueueOverwrite(batteries_, &queued));
+	wake_task();
+	return accepted;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -209,6 +214,7 @@ status bluetooth_service::submit_reply(const command_reply &reply)
 		return fail(component::service, error_code::queue_full);
 	}
 
+	wake_task();
 	return {};
 }
 
@@ -241,6 +247,7 @@ void bluetooth_service::submit_log(std::string_view text)
 	{
 		dropped_logs_.fetch_add(1);
 	}
+	wake_task();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -298,7 +305,7 @@ status bluetooth_service::poll_and_process(bool &poll_failed)
 		return controlled;
 	}
 
-	const auto event = backend_.poll(config_.poll_timeout_ms);
+	const auto event = backend_.poll(has_pending_work() ? config_.poll_timeout_ms : config_.idle_timeout_ms);
 	poll_failed = !event.has_value();
 	if (!event)
 	{
@@ -310,6 +317,26 @@ status bluetooth_service::poll_and_process(bool &poll_failed)
 		.and_then([&]{ return process_output(); });
 }
 
+
+//////////////////////////////////////////////////////////////////////////
+
+bool bluetooth_service::has_pending_work() const
+{
+	const auto output_queued = uxQueueMessagesWaiting(replies_) != 0 || uxQueueMessagesWaiting(samples_) != 0 ||
+		uxQueueMessagesWaiting(batteries_) != 0;
+	const auto cached_output_waits_for_retry = measurement_pending_ || battery_pending_ || advertise_pending_;
+	const auto log_stream_active = log_session_.load() != 0;
+	const auto history_transfer_active = journal_ && journal_->history_response_pending();
+	return output_queued || cached_output_waits_for_retry || log_stream_active || history_transfer_active ||
+		pairing_window_requested_.load();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void bluetooth_service::wake_task()
+{
+	signal_task_event(task_);
+}
 
 //////////////////////////////////////////////////////////////////////////
 

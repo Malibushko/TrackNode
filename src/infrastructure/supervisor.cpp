@@ -1,6 +1,11 @@
 #include "infrastructure/supervisor.h"
 #include "infrastructure/progress_policy.h"
 
+namespace
+{
+constexpr TickType_t watchdog_check_period = pdMS_TO_TICKS(8000);
+}
+
 void supervisor::configure(std::uint32_t enabled_mask)
 {
 	// Called once by composition before any worker is started.
@@ -71,7 +76,7 @@ void supervisor::report_startup(error failure)
 {
 	taskENTER_CRITICAL();
 	last_error_ = failure;
-	state_.store(program_state::initialization_error, std::memory_order_relaxed);
+	change_state(program_state::initialization_error);
 	taskEXIT_CRITICAL();
 }
 
@@ -134,7 +139,18 @@ void supervisor::recompute_state()
 			next = program_state::initialization_error;
 		}
 	}
-	state_.store(next, std::memory_order_relaxed);
+	change_state(next);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void supervisor::change_state(program_state next)
+{
+	const auto previous = state_.exchange(next, std::memory_order_relaxed);
+	if (previous != next)
+	{
+		signal_task_event(state_listener_);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -179,7 +195,7 @@ void supervisor::run()
 			}
 		}
 
-		vTaskDelay(pdMS_TO_TICKS(250));
+		vTaskDelay(watchdog_check_period);
 	}
 }
 

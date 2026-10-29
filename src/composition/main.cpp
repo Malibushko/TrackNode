@@ -5,9 +5,11 @@
 #include "board/clock.h"
 #include "platform/error.h"
 #include "platform/hardware.h"
+#include "platform/power_stats.h"
 #include "application/node_controller.h"
 #include "drivers/devices/neo6m.h"
 #include "drivers/devices/w25qxx.h"
+#include "drivers/gpio_interrupt.h"
 #include "drivers/spi_bus.h"
 #include "drivers/uart.h"
 #include "drivers/usb_cdc_serial_device.h"
@@ -59,6 +61,7 @@ struct firmware_composition
 status initialize_platform()
 {
 	HAL_Init();
+	power_stats::start();
 #ifdef TRACK_NODE_DEBUG_IN_SLEEP
 	HAL_DBGMCU_EnableDBGSleepMode();
 #endif
@@ -107,8 +110,8 @@ status configure_watchdog(firmware_composition &application)
 {
 	static watchdog device{watchdog_config{
 	    .instance = IWDG,
-	    .prescaler = IWDG_PRESCALER_128,
-	    .reload = 0x3FF
+	    .prescaler = IWDG_PRESCALER_256,
+	    .reload = 0xFFF
 	}};
 
 	if (auto added = application.devices.add("watchdog", device, component_startup::defer); !added)
@@ -146,9 +149,13 @@ status configure_console(firmware_composition &application)
 	}};
 	static usb_cdc cdc{device};
 	static usb_cdc_serial_device transport{cdc};
+	static gpio_interrupt vbus_edges{gpio_interrupt_config{
+		.pin = {GPIOA, GPIO_PIN_8}
+	}};
 	auto added = application.devices.add("usb_device", device, component_startup::initialize)
 		.and_then([&]{ return application.devices.add("usb_cdc", cdc, component_startup::initialize); })
-		.and_then([&]{ return application.devices.add("console_transport", transport, component_startup::initialize); });
+		.and_then([&]{ return application.devices.add("console_transport", transport, component_startup::initialize); })
+		.and_then([&]{ return application.devices.add("vbus_edges", vbus_edges, component_startup::initialize); });
 	if (!added)
 	{
 		return added;
@@ -162,7 +169,8 @@ status configure_console(firmware_composition &application)
 	}
 
 	application.logger = &logger;
-	static console_service console{transport, application.commands, logger, *application.monitor};
+	static task_event_source *const console_wake_sources[]{&transport, &vbus_edges};
+	static console_service console{transport, application.commands, logger, *application.monitor, console_wake_sources};
 	return application.services.add(service_id::console, console, {service_id::sensor});
 }
 
@@ -178,7 +186,10 @@ status configure_sensors(firmware_composition &application)
 	}};
 
 	static i2c_device transport{bus, 0x76};
-	static bmp280 sensor{transport, bmp280::config{}};
+	static bmp280 sensor{transport, bmp280::config{
+	    .mode = bmp280::run_mode::forced,
+	    .filter = bmp280::iir_filter::off
+	}};
 
 	auto added = application.devices.add("sensor_bus", bus, component_startup::initialize)
 	    .and_then([&]{ return application.devices.add("sensor_transport", transport, component_startup::defer); })
@@ -220,6 +231,7 @@ status configure_indicator(firmware_composition &application)
 
 status configure_gnss(firmware_composition &application)
 {
+#if TRACK_NODE_ENABLE_GNSS
 	if (!application.logger || !application.monitor)
 	{
 		return fail(component::service, error_code::invalid_config);
@@ -254,6 +266,11 @@ status configure_gnss(firmware_composition &application)
 	application.gnss = &gnss;
 
 	return {};
+#else
+	(void)application;
+
+	return {};
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -418,7 +435,7 @@ status configure_control_button(firmware_composition &application)
 status configure_controller(firmware_composition &application)
 {
 	if (!application.measurements || !application.indicator || !application.logger ||
-	    !application.gnss || !application.monitor || !application.journal || application.commands.bound())
+	    !application.monitor || !application.journal || application.commands.bound())
 	{
 		return fail(component::service, error_code::invalid_config);
 	}
@@ -454,11 +471,14 @@ status configure_controller(firmware_composition &application)
 #ifndef NO_STORAGE
 	    *application.records,
 #endif
-	    *application.indicator, *application.logger, *application.gnss,
+	    *application.indicator, *application.logger, application.gnss,
 	    *application.journal, battery, *application.monitor, application.bluetooth};
 
 	auto added = application.services.add(service_id::sensor, controller,
-	    {service_id::logger, service_id::indicator, service_id::gnss,
+	    {service_id::logger, service_id::indicator,
+#if TRACK_NODE_ENABLE_GNSS
+	     service_id::gnss,
+#endif
 #ifndef NO_STORAGE
 	     service_id::storage,
 #endif

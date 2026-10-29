@@ -19,16 +19,22 @@ int main()
 {
 	constexpr std::uint32_t pairing_thresholds[]{5000};
 	control_button_gesture_recognizer gesture{30, pairing_thresholds};
+	require(gesture.waiting_for_edge());
 	require(!gesture.update(true, 100));
+	require(!gesture.waiting_for_edge());
 	require(!gesture.update(false, 110));
 	require(!gesture.update(true, 120));
 	require(!gesture.update(true, 149));
 	require(!gesture.update(true, 150));
 	require(!gesture.update(true, 5149));
+	require(!gesture.waiting_for_edge());
 	require_gesture(gesture.update(true, 5150), control_button_gesture::kind::hold_threshold_reached, 5000);
+	require(gesture.waiting_for_edge());
 	require(!gesture.update(true, 12000));
 	require(!gesture.update(false, 12001));
+	require(!gesture.waiting_for_edge());
 	require_gesture(gesture.update(false, 12031), control_button_gesture::kind::released, 11851);
+	require(gesture.waiting_for_edge());
 	require(!gesture.update(true, 12040));
 	require(!gesture.update(true, 12070));
 	require(!gesture.update(false, 15000));

@@ -1,5 +1,7 @@
 #include "drivers/usb_cdc.h"
 
+#include "common/task_events.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -176,6 +178,13 @@ result<std::size_t> usb_cdc::write(const std::uint8_t *data, std::size_t size, T
 
 //////////////////////////////////////////////////////////////////////////
 
+void usb_cdc::set_receive_listener(TaskHandle_t task)
+{
+	receive_listener_ = task;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void usb_cdc::clear_write_waiter(TaskHandle_t waiter)
 {
 	taskENTER_CRITICAL();
@@ -225,6 +234,7 @@ std::int8_t usb_cdc::on_configured()
 	owner.configured_ = true;
 	owner.rx_armed_ = true;
 	USBD_CDC_SetRxBuffer(&owner.device_.native_handle(), owner.rx_packet_.data());
+	owner.notify_receive_listener();
 	return USBD_OK;
 }
 
@@ -233,6 +243,7 @@ std::int8_t usb_cdc::on_configured()
 std::int8_t usb_cdc::on_deconfigured()
 {
 	active_->reset_session();
+	active_->notify_receive_listener();
 	return USBD_OK;
 }
 
@@ -275,6 +286,7 @@ std::int8_t usb_cdc::on_receive(std::uint8_t *data, std::uint32_t *size)
 	}
 	owner.rx_size_ += *size;
 	owner.arm_receive();
+	owner.notify_receive_listener();
 	return USBD_OK;
 }
 
@@ -319,6 +331,27 @@ void usb_cdc::notify_write_waiter()
 	else
 	{
 		xTaskNotifyGive(waiter);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void usb_cdc::notify_receive_listener()
+{
+	const auto listener = receive_listener_;
+	if (!listener)
+	{
+		return;
+	}
+	if (__get_IPSR() != 0)
+	{
+		BaseType_t higher_priority_woken = pdFALSE;
+		vTaskNotifyGiveIndexedFromISR(listener, task_event_notification_index, &higher_priority_woken);
+		portYIELD_FROM_ISR(higher_priority_woken);
+	}
+	else
+	{
+		xTaskNotifyGiveIndexed(listener, task_event_notification_index);
 	}
 }
 

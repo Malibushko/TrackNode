@@ -15,15 +15,81 @@
 #include "infrastructure/storage_service.h"
 #endif
 #include "infrastructure/supervisor.h"
+#include "platform/power_stats.h"
 
 #include <charconv>
+#include <cstdio>
+
+namespace
+{
+constexpr std::size_t power_line_capacity = 88;
+constexpr std::uint16_t first_irq_exception = 16;
+
+struct power_rate_line
+{
+	std::array<char, power_line_capacity> text{};
+	std::size_t length = 0;
+};
+
+//////////////////////////////////////////////////////////////////////////
+
+bool append_power_rate(power_rate_line &line, const char *name, std::uint32_t count, std::uint32_t duration_ms)
+{
+	const auto tenths = rate_tenths_per_second(count, duration_ms);
+	const auto available = line.text.size() - line.length;
+	const auto written = std::snprintf(line.text.data() + line.length, available, " %s=%lu.%lu/s", name,
+	                                   static_cast<unsigned long>(tenths / 10),
+	                                   static_cast<unsigned long>(tenths % 10));
+	const auto fits = written > 0 && static_cast<std::size_t>(written) < available;
+	if (!fits)
+	{
+		line.text[line.length] = '\0';
+		return false;
+	}
+
+	line.length += static_cast<std::size_t>(written);
+	return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+result<gnss_service::snapshot_t> read_gnss(gnss_service *gnss)
+{
+	if (!gnss)
+	{
+		return fail(component::service, error_code::not_initialized);
+	}
+
+	return gnss->read();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void name_wake_source(std::array<char, power_profile::name_capacity> &name, std::uint16_t exception)
+{
+	if (const auto *known = power_stats::exception_name(exception))
+	{
+		std::snprintf(name.data(), name.size(), "%s", known);
+		return;
+	}
+	if (exception < first_irq_exception)
+	{
+		std::snprintf(name.data(), name.size(), "EXC%u", static_cast<unsigned>(exception));
+		return;
+	}
+
+	std::snprintf(name.data(), name.size(), "IRQ%u", static_cast<unsigned>(exception - first_irq_exception));
+}
+
+//////////////////////////////////////////////////////////////////////////
+}
 
 node_controller::node_controller(config settings, sensor_service &sensor,
 #ifndef NO_STORAGE
                                  storage_service &storage,
 #endif
                                  indicator_service &indicator, logger_service &logger,
-                                 gnss_service &gnss, telemetry_sink &telemetry,
+                                 gnss_service *gnss, telemetry_sink &telemetry,
                                  battery_service &battery, supervisor &monitor, battery_sink *battery_output)
     : config_(settings), sensor_(sensor),
 #ifndef NO_STORAGE
@@ -103,7 +169,6 @@ void node_controller::task_entry(void *argument)
 
 void node_controller::run()
 {
-	constexpr TickType_t heartbeat_period = pdMS_TO_TICKS(1000);
 	take_sample();
 	TickType_t last_sample_at = xTaskGetTickCount();
 
@@ -123,8 +188,7 @@ void node_controller::run()
 		}
 		command_request received{};
 		const TickType_t until_sample = sample_period_ - elapsed;
-		const TickType_t wait = until_sample < heartbeat_period ? until_sample : heartbeat_period;
-		if (xQueueReceive(inbox_, &received, wait) == pdPASS)
+		if (xQueueReceive(inbox_, &received, next_wait(until_sample)) == pdPASS)
 		{
 			handle_command(received);
 		}
@@ -201,12 +265,22 @@ void node_controller::sample_battery()
 
 //////////////////////////////////////////////////////////////////////////
 
+TickType_t node_controller::next_wait(TickType_t until_sample) const
+{
+	constexpr TickType_t heartbeat_period = pdMS_TO_TICKS(10000);
+	const auto battery_series_running = battery_.sampling();
+	const auto wake_limit = battery_series_running ? pdMS_TO_TICKS(battery_.sample_interval_ms()) : heartbeat_period;
+	return until_sample < wake_limit ? until_sample : wake_limit;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 bool node_controller::can_sample_battery(std::uint32_t now_ms) const
 {
 #ifndef NO_STORAGE
 	return false;
 #else
-	return !gnss_.is_high_power_active(now_ms);
+	return !gnss_ || !gnss_->is_high_power_active(now_ms);
 #endif
 }
 
@@ -259,7 +333,7 @@ void node_controller::take_sample()
 		monitor_.progress(service_id::sensor, now);
 
 		std::optional<gnss_sample> gnss;
-		if (const auto latest = gnss_.read())
+		if (const auto latest = read_gnss(gnss_))
 		{
 			gnss = gnss_sample{
 			    .sequence = latest->sequence,
@@ -391,6 +465,10 @@ void node_controller::handle_command(command_request request)
 		case command_type::set_power_mode:
 			handle_set_power_mode(value.power_mode_);
 			break;
+
+		case command_type::read_power:
+			handle_read_power();
+			break;
 	}
 }
 
@@ -439,7 +517,10 @@ bool node_controller::ensure_sample_available()
 
 void node_controller::set_power_mode(power_mode mode)
 {
-	gnss_.set_power_mode(mode);
+	if (gnss_)
+	{
+		gnss_->set_power_mode(mode);
+	}
 	telemetry_.set_power_mode(mode);
 }
 
@@ -479,8 +560,14 @@ void node_controller::handle_read_pressure()
 
 void node_controller::handle_read_gnss()
 {
-	gnss_.request_lookup();
-	const auto latest = gnss_.read();
+	if (!gnss_)
+	{
+		(void)reply("ERR GNSS_DISABLED\r\n");
+		return;
+	}
+
+	gnss_->request_lookup();
+	const auto latest = gnss_->read();
 	if (!latest)
 	{
 		(void)reply("GNSS snapshot unavailable\r\n");
@@ -647,6 +734,67 @@ void node_controller::handle_set_power_mode(power_mode power_mode)
 {
 	set_power_mode(power_mode);
 	(void)reply("power mode changed to: %s\r\n", power_mode == power_mode::high ? "high" : "low");
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void node_controller::handle_read_power()
+{
+	if constexpr (!power_stats::enabled)
+	{
+		(void)reply("ERR POWER_STATS_DISABLED\r\n");
+		return;
+	}
+
+	static power_report report{};
+	power_stats::take_report(report);
+	const auto &window = report.window;
+	const auto awake = awake_permille(window.slept_cycles, window.duration_ms, report.core_clock_hz);
+	const auto sleeps = rate_tenths_per_second(window.sleeps, window.duration_ms);
+	(void)reply("POWER window_ms=%lu tickless=%u awake=%lu.%lu%% sleeps=%lu.%lu/s debug_low_power=%u\r\n",
+	            static_cast<unsigned long>(window.duration_ms),
+	            static_cast<unsigned>(report.tickless),
+	            static_cast<unsigned long>(awake / 10),
+	            static_cast<unsigned long>(awake % 10),
+	            static_cast<unsigned long>(sleeps / 10),
+	            static_cast<unsigned long>(sleeps % 10),
+	            static_cast<unsigned>(report.debug_clocks_in_low_power));
+
+	power_rate_line line{};
+	const auto flush_line = [&](const char *label) {
+		if (line.length != 0)
+		{
+			(void)reply("%s%s\r\n", label, line.text.data());
+		}
+		line = {};
+	};
+	const auto add_rate = [&](const char *label, const char *name, std::uint32_t count) {
+		if (!append_power_rate(line, name, count, window.duration_ms))
+		{
+			flush_line(label);
+			(void)append_power_rate(line, name, count, window.duration_ms);
+		}
+	};
+
+	for (std::size_t index = 0; index < window.wake_source_count; ++index)
+	{
+		const auto &source = window.wake_sources[index];
+		std::array<char, power_profile::name_capacity> name{};
+		name_wake_source(name, source.exception);
+		add_rate("WAKE", name.data(), source.count);
+	}
+	flush_line("WAKE");
+
+	for (std::size_t index = 0; index < window.task_count; ++index)
+	{
+		const auto &task = window.tasks[index];
+		add_rate("TASK", task.name.data(), task.switches);
+	}
+	if (window.untracked_switches != 0)
+	{
+		add_rate("TASK", "other", window.untracked_switches);
+	}
+	flush_line("TASK");
 }
 
 //////////////////////////////////////////////////////////////////////////

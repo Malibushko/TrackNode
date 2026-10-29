@@ -201,7 +201,8 @@ static void check_unavailable_storage()
 	sample.sensor.valid = true;
 	(void)service.submit(sample);
 	assert(live.received == 1);
-	assert(service.handle_history_command("H O 000000000000002A", 1) == "ERR HISTORY_STORAGE\r\n");
+	flash.reported_jedec_id = {0xFF, 0xFF, 0xFF};
+	assert(service.handle_history_command("H O 000000000000002A", 1) == "ERR HISTORY_STORAGE 0C 03 FFFFFF\r\n");
 	assert(!service.acknowledge(sample.id));
 }
 

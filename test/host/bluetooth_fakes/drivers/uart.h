@@ -26,6 +26,15 @@ public:
 	{
 		return drops;
 	}
+	std::size_t available() const
+	{
+		return input.size();
+	}
+	void set_rx_listener(TaskHandle_t task)
+	{
+		rx_listener = task;
+	}
+	TaskHandle_t rx_listener = nullptr;
 	status write(const std::uint8_t *bytes, std::size_t size, std::uint32_t)
 	{
 		return on_write ? on_write(bytes, size) : status{};

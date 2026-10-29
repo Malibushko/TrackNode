@@ -3,6 +3,7 @@
 #include "core/result.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -70,8 +71,10 @@ public:
 
 	[[nodiscard]] std::uint32_t capacity_bytes() const { return static_cast<std::uint32_t>(memory.size()); }
 	[[nodiscard]] std::uint8_t manufacturer_id() const { return 0xEF; }
+	[[nodiscard]] std::array<std::uint8_t, 3> jedec_id() const { return reported_jedec_id; }
 
 	std::vector<std::uint8_t> memory;
+	std::array<std::uint8_t, 3> reported_jedec_id{0xEF, 0x40, 0x17};
 	bool fail_init = false;
 	std::optional<std::size_t> program_budget;
 	std::size_t bytes_read = 0;

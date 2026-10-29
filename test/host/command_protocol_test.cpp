@@ -18,6 +18,8 @@ int main()
 	assert(parse_command("GET VOLTAGE extra").error() == command_parse_error::invalid_syntax);
 	assert(parse_command("get battery")->type == command_type::read_battery);
 	assert(parse_command("GET BATTERY extra").error() == command_parse_error::invalid_syntax);
+	assert(parse_command("get power")->type == command_type::read_power);
+	assert(parse_command("GET POWER extra").error() == command_parse_error::invalid_syntax);
 	assert(parse_command("GET\tLOG")->type == command_type::read_log);
 	auto period = parse_command("SET SAMPLE_PERIOD 5000");
 	assert(period && period->type == command_type::set_sample_period);

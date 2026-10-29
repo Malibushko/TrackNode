@@ -111,6 +111,10 @@ tl::expected<command, command_parse_error> parse_command(std::string_view line)
 		{
 			return command{ command_type::read_battery };
 		}
+		if (matches(noun, "POWER"))
+		{
+			return command{ command_type::read_power };
+		}
 		return tl::make_unexpected(command_parse_error::unknown_command);
 	}
 

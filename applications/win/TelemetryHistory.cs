@@ -13,6 +13,8 @@ public sealed record HistorySnapshot(string DeviceId, ulong Epoch, uint UptimeSe
     public static HistorySnapshot Parse(IReadOnlyList<string> lines, DateTimeOffset phoneUtc, double roundTripSeconds)
     {
         if (lines.Count != 1) throw new InvalidDataException("Invalid history metadata.");
+        if (lines[0].StartsWith("ERR ", StringComparison.Ordinal))
+            throw new InvalidDataException($"Device reported {lines[0].Trim()}");
         var fields = lines[0].Split(' ');
         if (fields.Length != 10 || fields[0] != "H" || fields[1] != "O" || fields[2] != "2" ||
             fields[3].Length != 24 || !fields[3].All(Uri.IsHexDigit))

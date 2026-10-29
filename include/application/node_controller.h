@@ -33,7 +33,7 @@ public:
 	                storage_service &storage,
 #endif
 	                indicator_service &indicator, logger_service &logger,
-	                gnss_service &gnss, telemetry_sink &telemetry,
+	                gnss_service *gnss, telemetry_sink &telemetry,
 	                battery_service &battery, supervisor &monitor, battery_sink *battery_output = nullptr);
 
 public: // Common lifecycle
@@ -52,6 +52,7 @@ private: // Common task loop
 private: // Application behavior
 	void take_sample();
 	void sample_battery();
+	[[nodiscard]] TickType_t next_wait(TickType_t until_sample) const;
 	bool can_sample_battery(std::uint32_t now_ms) const;
 	void handle_command(command_request request);
 	status reply(const char *format, ...);
@@ -66,6 +67,7 @@ private: // Application behavior
 	void handle_read_voltage();
 	void handle_read_battery();
 	void handle_set_power_mode(power_mode power_mode);
+	void handle_read_power();
 	bool ensure_sample_available();
 
 	void set_power_mode(power_mode power_mode);
@@ -78,7 +80,7 @@ private: // State
 #endif
 	indicator_service &indicator_;
 	logger_service &logger_;
-	gnss_service &gnss_;
+	gnss_service *gnss_;
 	telemetry_sink &telemetry_;
 	battery_service &battery_;
 	battery_sink *battery_output_;
@@ -91,7 +93,7 @@ private: // State
 	command_request active_request_{};
 	std::uint32_t next_sequence_ = 1;
 	sequence_t next_telemetry_id_ = 1;
-	TickType_t sample_period_ = pdMS_TO_TICKS(1000);
+	TickType_t sample_period_ = pdMS_TO_TICKS(15000);
 	bool sensor_initialized_ = false;
 	bool sensor_faulted_ = false;
 };

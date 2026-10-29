@@ -24,6 +24,7 @@ public: // Supervisor API
 	void report(service_id id, error failure, service_health health);
 	void report_startup(error failure);
 	void progress(service_id id, TickType_t now);
+	void set_state_listener(TaskHandle_t task) { state_listener_ = task; }
 
 	[[nodiscard]] service_health health(service_id id) const;
 	[[nodiscard]] service_diagnostic diagnostic(service_id id) const;
@@ -36,6 +37,7 @@ private: // Common task loop
 
 private: // Supervisor internals
 	void recompute_state();
+	void change_state(program_state next);
 
 	static constexpr std::size_t service_count = static_cast<std::size_t>(service_id::count);
 	static constexpr std::size_t index(service_id id) { return static_cast<std::size_t>(id); }
@@ -46,6 +48,7 @@ private: // State
 	std::array<std::atomic<service_health>, service_count> health_{};
 	std::array<std::atomic<TickType_t>, service_count> last_progress_{};
 	std::atomic<program_state> state_{ program_state::initialization_error };
+	TaskHandle_t volatile state_listener_ = nullptr;
 	std::optional<error> last_error_;
 	std::array<std::optional<error>, service_count> service_errors_{};
 };

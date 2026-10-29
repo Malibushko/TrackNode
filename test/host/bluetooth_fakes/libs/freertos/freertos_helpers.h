@@ -88,3 +88,25 @@ inline void vTaskDelay(TickType_t ticks)
 {
 	fake_ticks += ticks;
 }
+
+inline unsigned fake_task_events = 0;
+inline void signal_task_event(TaskHandle_t task)
+{
+	if (task)
+	{
+		++fake_task_events;
+	}
+}
+inline TaskHandle_t xTaskGetCurrentTaskHandle()
+{
+	return static_cast<void *>(&fake_ticks);
+}
+inline bool wait_task_event(TickType_t ticks)
+{
+	fake_ticks += ticks;
+	return false;
+}
+inline UBaseType_t uxQueueMessagesWaiting(QueueHandle_t queue)
+{
+	return queue ? static_cast<UBaseType_t>(queue->items.size()) : 0;
+}

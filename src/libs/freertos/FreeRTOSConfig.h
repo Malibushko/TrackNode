@@ -109,6 +109,26 @@
 #endif
 #define configUSE_TICKLESS_IDLE                    TRACK_NODE_TICKLESS_IDLE
 
+/* GET POWER diagnostics: count task switches, sleep entries and the exception
+ * that ended each tickless sleep. See docs/POWER.md. */
+#ifndef TRACK_NODE_POWER_STATS
+#define TRACK_NODE_POWER_STATS                     0
+#endif
+#if TRACK_NODE_POWER_STATS
+#ifdef __cplusplus
+extern "C" {
+#endif
+void track_node_power_task_switched_in( void * task, const char * name );
+void track_node_power_before_sleep( void );
+void track_node_power_after_sleep( void );
+#ifdef __cplusplus
+}
+#endif
+#define traceTASK_SWITCHED_IN()                    track_node_power_task_switched_in( ( void * ) pxCurrentTCB, pxCurrentTCB->pcTaskName )
+#define configPRE_SLEEP_PROCESSING( idle_time )    track_node_power_before_sleep()
+#define configPOST_SLEEP_PROCESSING( idle_time )   track_node_power_after_sleep()
+#endif
+
 /* configMAX_PRIORITIES Sets the number of available task priorities.  Tasks can
  * be assigned priorities of 0 to (configMAX_PRIORITIES - 1).  Zero is the
  * lowest priority. */
@@ -151,7 +171,7 @@
  * configTASK_NOTIFICATION_ARRAY_ENTRIES sets the number of indexes in the
  * array. See https://www.freertos.org/RTOS-task-notifications.html  Defaults to
  * 1 if left undefined. */
-#define configTASK_NOTIFICATION_ARRAY_ENTRIES      1
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES      2
 
 /* configQUEUE_REGISTRY_SIZE sets the maximum number of queues and semaphores
  * that can be referenced from the queue registry.  Only required when using a

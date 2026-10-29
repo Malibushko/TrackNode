@@ -14,10 +14,12 @@ struct progress_observation
 #endif
 };
 
+inline constexpr TickType_t watchdog_progress_timeout = pdMS_TO_TICKS(30000);
+
 inline bool should_refresh_watchdog(TickType_t now, TickType_t started,
                                     const progress_observation &observed)
 {
-	constexpr TickType_t progress_timeout = pdMS_TO_TICKS(10000);
+	constexpr TickType_t progress_timeout = watchdog_progress_timeout;
 #ifndef NO_STORAGE
 	constexpr TickType_t storage_start_timeout = pdMS_TO_TICKS(15000);
 #endif

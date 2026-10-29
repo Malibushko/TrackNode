@@ -414,6 +414,7 @@ void uart::on_rx_event(size_t write_pos, BaseType_t *higher_priority_woken)
 	{
 		last_read_pos_ = 0;
 	}
+	signal_task_event_from_isr(rx_listener_, higher_priority_woken);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -465,6 +466,7 @@ void uart::on_error(BaseType_t* higher_priority_woken)
 			const auto restarted = start_rx_dma();
 			rx_restart_pending_.store(!restarted);
 		}
+		signal_task_event_from_isr(rx_listener_, higher_priority_woken);
 	}
 }
 
@@ -558,6 +560,13 @@ size_t uart::available() const
 uint32_t uart::dropped_count() const
 {
 	return dropped_count_.load(std::memory_order_relaxed);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void uart::set_rx_listener(TaskHandle_t task)
+{
+	rx_listener_ = task;
 }
 
 //////////////////////////////////////////////////////////////////////////

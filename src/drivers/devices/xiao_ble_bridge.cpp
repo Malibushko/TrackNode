@@ -43,6 +43,7 @@ status xiao_ble_bridge::init()
 	}
 
 	stop();
+	transport_.set_rx_listener(xTaskGetCurrentTaskHandle());
 	dropped_ = transport_.dropped_count();
 	const std::uint8_t delimiter = 0;
 	if (const auto resynchronized = transport_.write(&delimiter, ble_bridge::delimiter_size, response_timeout_ms); !resynchronized)
@@ -211,7 +212,7 @@ result<bluetooth_event> xiao_ble_bridge::poll(std::uint32_t timeout_ms)
 	}
 	if (event_count_ == 0)
 	{
-		if (const auto received = read_frames(timeout_ms); !received)
+		if (const auto received = wait_and_read_frames(timeout_ms); !received)
 		{
 			return tl::unexpected(received.error());
 		}
@@ -260,6 +261,19 @@ status xiao_ble_bridge::consume_bytes(std::span<const std::uint8_t> bytes)
 	}
 
 	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status xiao_ble_bridge::wait_and_read_frames(std::uint32_t timeout_ms)
+{
+	const auto nothing_received_yet = transport_.available() == 0;
+	if (nothing_received_yet)
+	{
+		(void)wait_task_event(pdMS_TO_TICKS(timeout_ms));
+	}
+
+	return read_frames(0);
 }
 
 //////////////////////////////////////////////////////////////////////////

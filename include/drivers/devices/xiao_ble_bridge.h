@@ -26,6 +26,7 @@ public:
 private:
 	status check_transport_overflow();
 	status consume_bytes(std::span<const std::uint8_t> bytes);
+	status wait_and_read_frames(std::uint32_t timeout_ms);
 	status read_frames(std::uint32_t timeout_ms);
 	bool should_handle_frame(const ble_bridge::frame &frame) const;
 

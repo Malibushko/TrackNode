@@ -21,10 +21,12 @@
         "STM32CUBE_F4_ROOT": "$env{STM32CUBE_F4_ROOT}",
         "TRACK_NODE_ENABLE_BLUETOOTH": "ON",
         "TRACK_NODE_ENABLE_LORA": "OFF",
+        "TRACK_NODE_ENABLE_GNSS": "OFF",
         "NO_STORAGE": "ON",
         "FAULT_INJECTION_ENABLE": "OFF",
         "PERF_MEASURING": "OFF",
-        "TRACK_NODE_DEBUG_IN_SLEEP": "OFF"
+        "TRACK_NODE_DEBUG_IN_SLEEP": "OFF",
+        "TRACK_NODE_POWER_STATS": "ON"
       }
     },
     {

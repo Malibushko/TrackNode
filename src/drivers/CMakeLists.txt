@@ -3,6 +3,7 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     protocols/bridge_stream_parser.cpp
     adc.cpp
     gpio.cpp
+    gpio_interrupt.cpp
     i2c_bus.cpp
     i2c_device.cpp
     pwm.cpp

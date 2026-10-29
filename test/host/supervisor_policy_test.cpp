@@ -14,11 +14,11 @@ int main()
 #ifdef NO_STORAGE
 	const progress_observation healthy{ service_health::ready, 9000 };
 	assert(should_refresh_watchdog(10000, 0, healthy));
-	assert(!should_refresh_watchdog(19001, 0, healthy));
+	assert(!should_refresh_watchdog(9000 + watchdog_progress_timeout + 1, 0, healthy));
 
 	const progress_observation sensor_without_samples{ service_health::degraded, 0 };
 	assert(should_refresh_watchdog(6999, 1000, sensor_without_samples));
-	assert(!should_refresh_watchdog(11001, 1000, sensor_without_samples));
+	assert(!should_refresh_watchdog(1000 + watchdog_progress_timeout + 1, 1000, sensor_without_samples));
 
 	const progress_observation failed{ service_health::failed, 9000 };
 	assert(!should_refresh_watchdog(10000, 0, failed));
@@ -27,25 +27,25 @@ int main()
 	    service_health::ready, service_health::ready, 9000, 9000
 	};
 	assert(should_refresh_watchdog(10000, 0, healthy));
-	assert(!should_refresh_watchdog(19001, 0, healthy));
+	assert(!should_refresh_watchdog(9000 + watchdog_progress_timeout + 1, 0, healthy));
 
 	const progress_observation sensor_without_samples{
 	    service_health::degraded, service_health::ready, 0, 6000
 	};
 	assert(should_refresh_watchdog(6999, 1000, sensor_without_samples));
-	assert(!should_refresh_watchdog(11001, 1000, sensor_without_samples));
+	assert(!should_refresh_watchdog(1000 + watchdog_progress_timeout + 1, 1000, sensor_without_samples));
 
 	const progress_observation sensor_stopped{
 	    service_health::degraded, service_health::ready, 5000, 14000
 	};
-	assert(should_refresh_watchdog(15000, 1000, sensor_stopped));
-	assert(!should_refresh_watchdog(15001, 1000, sensor_stopped));
+	assert(should_refresh_watchdog(5000 + watchdog_progress_timeout, 1000, sensor_stopped));
+	assert(!should_refresh_watchdog(5000 + watchdog_progress_timeout + 1, 1000, sensor_stopped));
 
 	const progress_observation no_card{
 	    service_health::ready, service_health::degraded, 9000, 9500
 	};
 	assert(should_refresh_watchdog(10000, 0, no_card));
-	assert(!should_refresh_watchdog(19501, 0, no_card));
+	assert(!should_refresh_watchdog(9500 + watchdog_progress_timeout + 1, 0, no_card));
 
 	const progress_observation mounting{
 	    service_health::ready, service_health::starting, 9000, 0
