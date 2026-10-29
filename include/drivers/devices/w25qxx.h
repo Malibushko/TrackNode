@@ -24,11 +24,28 @@ public:
 	[[nodiscard]] std::array<std::uint8_t, 3> jedec_id() const { return jedec_id_; }
 
 private:
+	template <typename operation_t>
+	status while_awake(operation_t &&operation)
+	{
+		if (auto awake = wake(); !awake)
+		{
+			return awake;
+		}
+		const auto outcome = operation();
+		const auto asleep = enter_power_down();
+		return outcome ? asleep : outcome;
+	}
+
+	status read_awake(std::uint32_t address, std::span<std::uint8_t> destination);
+	status program_awake(std::uint32_t address, std::span<const std::uint8_t> source);
+	status erase_sector_awake(std::uint32_t address);
 	status write_enable();
 	status wait_ready(std::uint32_t timeout_ms);
 	status read_status(std::uint8_t &value);
 	status read_jedec_id();
 	status release_power_down();
+	status wake();
+	status enter_power_down();
 	status validate_range(std::uint32_t address, std::size_t size) const;
 	status program_page(std::uint32_t address, std::span<const std::uint8_t> source);
 	void pause_one_millisecond() const;
@@ -38,4 +55,5 @@ private:
 	std::uint32_t capacity_bytes_ = 0;
 	std::uint8_t manufacturer_id_ = 0;
 	bool identified_ = false;
+	bool powered_down_ = false;
 };

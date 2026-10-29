@@ -5,6 +5,7 @@
 #include "board/clock.h"
 #include "platform/error.h"
 #include "platform/hardware.h"
+#include "platform/low_power.h"
 #include "platform/power_stats.h"
 #include "application/node_controller.h"
 #include "drivers/devices/neo6m.h"
@@ -55,6 +56,24 @@ struct firmware_composition
 	bluetooth_service *bluetooth = nullptr;
 	track_node *runtime = nullptr;
 };
+
+//////////////////////////////////////////////////////////////////////////
+
+bool usb_keeps_clocks_running(const void *context)
+{
+	return static_cast<const usb_device *>(context)->attached();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+#if TRACK_NODE_ENABLE_BLUETOOTH
+bool bridge_uart_keeps_clocks_running(const void *context)
+{
+	const auto &bridge = *static_cast<const uart *>(context);
+	const auto peer_exchange_recent = bridge.idle_ticks() < pdMS_TO_TICKS(ble_bridge::receiver_awake_hold_ms);
+	return bridge.transmitting() || peer_exchange_recent;
+}
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -155,7 +174,8 @@ status configure_console(firmware_composition &application)
 	auto added = application.devices.add("usb_device", device, component_startup::initialize)
 		.and_then([&]{ return application.devices.add("usb_cdc", cdc, component_startup::initialize); })
 		.and_then([&]{ return application.devices.add("console_transport", transport, component_startup::initialize); })
-		.and_then([&]{ return application.devices.add("vbus_edges", vbus_edges, component_startup::initialize); });
+		.and_then([&]{ return application.devices.add("vbus_edges", vbus_edges, component_startup::initialize); })
+		.and_then([&]{ return low_power::add_stop_veto(usb_keeps_clocks_running, &device); });
 	if (!added)
 	{
 		return added;
@@ -389,7 +409,14 @@ status configure_bluetooth(firmware_composition &application)
 	    .baud_rate = 115200,
 	    .mode = UART_MODE_TX_RX,
 	    .rx_buffer_size = 1024,
+	    .rx_pull = GPIO_PULLUP,
 	}};
+
+	if (auto watched = low_power::add_stop_veto(bridge_uart_keeps_clocks_running, &transport)
+	    .and_then([&]{ return low_power::add_wake_pin(transport.rx_pin()); }); !watched)
+	{
+		return watched;
+	}
 
 	static xiao_ble_bridge backend{transport};
 	static bluetooth_service bluetooth{backend, application.commands, *application.logger, *application.monitor, bluetooth_config{}, application.indicator, application.journal};
@@ -506,6 +533,16 @@ status configure_controller(firmware_composition &application)
 
 //////////////////////////////////////////////////////////////////////////
 
+status configure_low_power(firmware_composition &application)
+{
+	(void)application;
+	(void)low_power::start();
+
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status configure_runtime(firmware_composition &application)
 {
 	if (!application.monitor || !application.indicator || !application.commands.bound() || application.runtime)
@@ -542,6 +579,7 @@ int main()
 	    .and_then([&]{ return configure_bluetooth(application); })
 	    .and_then([&]{ return configure_control_button(application); })
 	    .and_then([&]{ return configure_controller(application); })
+	    .and_then([&]{ return configure_low_power(application); })
 	    .and_then([&]{ return configure_runtime(application); });
 
 	if (!configured)

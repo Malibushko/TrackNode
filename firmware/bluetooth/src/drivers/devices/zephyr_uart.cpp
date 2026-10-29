@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <climits>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/pm/device.h>
 #include <zephyr/sys/clock.h>
 
 namespace ble
@@ -74,6 +75,17 @@ status zephyr_uart::init()
 		return fail(component::uart, configuration_error(registered));
 	}
 
+	if (config_.wake_input && !wake_callback_added_)
+	{
+		wake_callback_.owner = this;
+		gpio_init_callback(&wake_callback_.callback, on_wake_edge, BIT(config_.wake_input->pin));
+		if (const int added = gpio_add_callback_dt(config_.wake_input, &wake_callback_.callback); added != 0)
+		{
+			return fail(component::uart, configuration_error(added));
+		}
+		wake_callback_added_ = true;
+	}
+
 	ring_buf_reset(&receive_buffer_);
 	k_sem_reset(&receive_ready_);
 	k_sem_reset(&transmit_done_);
@@ -91,6 +103,11 @@ status zephyr_uart::init()
 
 void zephyr_uart::stop()
 {
+	if (suspended_)
+	{
+		(void)resume();
+	}
+
 	const auto key = k_spin_lock(&lock_);
 	if (initialized_)
 	{
@@ -113,6 +130,31 @@ void zephyr_uart::stop()
 
 
 status zephyr_uart::write(data_view data, std::uint32_t timeout_ms)
+{
+	const auto peer_may_sleep = config_.peer_sleep_after_ms != 0 && idle_ms() >= config_.peer_sleep_after_ms;
+	if (suspended_)
+	{
+		if (auto resumed = resume(); !resumed)
+		{
+			return resumed;
+		}
+	}
+	if (peer_may_sleep)
+	{
+		if (auto woken = wake_peer(timeout_ms); !woken)
+		{
+			return woken;
+		}
+	}
+
+	const auto sent = transmit(data, timeout_ms);
+	mark_activity();
+	return sent;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status zephyr_uart::transmit(data_view data, std::uint32_t timeout_ms)
 {
 	if (data.size != 0 && data.data == nullptr)
 	{
@@ -241,6 +283,119 @@ void zephyr_uart::set_activity_signal(k_sem *signal)
 
 //////////////////////////////////////////////////////////////////////////
 
+status zephyr_uart::suspend_when_idle()
+{
+	const auto hold_running = idle_ms() < config_.awake_hold_ms;
+	if (!can_suspend() || suspended_ || hold_running)
+	{
+		return {};
+	}
+
+	if (const int err = pm_device_action_run(&transport_, PM_DEVICE_ACTION_SUSPEND); err != 0 && err != -EALREADY)
+	{
+		return fail(component::uart, configuration_error(err));
+	}
+	suspended_ = true;
+	wake_requested_ = false;
+	const auto wake_input_armed = gpio_pin_configure_dt(config_.wake_input, GPIO_INPUT) == 0 &&
+		gpio_pin_interrupt_configure_dt(config_.wake_input, GPIO_INT_LEVEL_ACTIVE) == 0;
+	if (!wake_input_armed)
+	{
+		return resume();
+	}
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_uart::resume_if_woken()
+{
+	if (suspended_ && wake_requested_)
+	{
+		(void)resume();
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+std::optional<std::uint32_t> zephyr_uart::suspend_after_ms() const
+{
+	if (!can_suspend() || suspended_)
+	{
+		return std::nullopt;
+	}
+
+	const auto idle = idle_ms();
+	return idle >= config_.awake_hold_ms ? 0u : config_.awake_hold_ms - idle;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status zephyr_uart::wake_peer(std::uint32_t timeout_ms)
+{
+	const std::uint8_t delimiter = 0;
+	if (auto sent = transmit({&delimiter, 1}, timeout_ms); !sent)
+	{
+		return sent;
+	}
+	k_msleep(static_cast<std::int32_t>(config_.peer_wake_guard_ms));
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status zephyr_uart::resume()
+{
+	(void)gpio_pin_interrupt_configure_dt(config_.wake_input, GPIO_INT_DISABLE);
+	const int err = pm_device_action_run(&transport_, PM_DEVICE_ACTION_RESUME);
+	suspended_ = false;
+	wake_requested_ = false;
+	mark_activity();
+	if (err != 0 && err != -EALREADY)
+	{
+		return fail(component::uart, configuration_error(err));
+	}
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_uart::mark_activity()
+{
+	const auto key = k_spin_lock(&lock_);
+	last_activity_ms_ = k_uptime_get();
+	k_spin_unlock(&lock_, key);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+std::uint32_t zephyr_uart::idle_ms() const
+{
+	const auto key = k_spin_lock(&lock_);
+	const auto idle = k_uptime_get() - last_activity_ms_;
+	k_spin_unlock(&lock_, key);
+	return static_cast<std::uint32_t>(std::max<std::int64_t>(idle, 0));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+bool zephyr_uart::can_suspend() const
+{
+	return initialized_ && config_.wake_input != nullptr && config_.awake_hold_ms != 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_uart::on_wake_edge(const device *, gpio_callback *callback, std::uint32_t)
+{
+	auto &self = *reinterpret_cast<wake_callback *>(callback)->owner;
+	(void)gpio_pin_interrupt_configure_dt(self.config_.wake_input, GPIO_INT_DISABLE);
+	self.wake_requested_ = true;
+	self.signal_activity();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void zephyr_uart::signal_activity()
 {
 	if (activity_)
@@ -289,6 +444,7 @@ void zephyr_uart::handle_interrupt()
 					receive_error_ = true;
 				}
 				k_sem_give(&receive_ready_);
+				last_activity_ms_ = k_uptime_get();
 				signal_activity();
 			}
 		} while (received > 0);

@@ -1,5 +1,6 @@
 #include "drivers/devices/zephyr_uart.h"
 #include <zephyr/drivers/uart.h>
+#include <zephyr/pm/device.h>
 #include <array>
 #include <iostream>
 #include <stdexcept>
@@ -102,6 +103,43 @@ int main()
 	pump = [&] { fire(hardware); };
 	require(transport.write(source, 10).has_value());
 	transport.stop();
+
+	gpio_dt_spec wake_pin{};
+	device sleepy_hardware;
+	ble::zephyr_uart sleepy{sleepy_hardware, {
+		.baud_rate = 115200,
+		.wake_input = &wake_pin,
+		.awake_hold_ms = 100,
+		.peer_sleep_after_ms = 50,
+		.peer_wake_guard_ms = 10
+	}};
+	require(sleepy.init().has_value());
+	pump = [&] { fire(sleepy_hardware); };
+	simulated_time += 1000;
+	const auto before_preamble = simulated_time;
+	require(sleepy.write(source, 10).has_value());
+	const auto idle_peer_woken_first = sleepy_hardware.outgoing.size() == payload.size() + 1 &&
+		sleepy_hardware.outgoing.front() == 0 && simulated_time - before_preamble >= 10;
+	require(idle_peer_woken_first);
+	sleepy_hardware.outgoing.clear();
+	require(sleepy.write(source, 10).has_value());
+	require(sleepy_hardware.outgoing.size() == payload.size());
+	require(sleepy.suspend_when_idle().has_value() && !sleepy.suspended());
+	require(sleepy.suspend_after_ms() == 100u);
+	simulated_time += 100;
+	require(sleepy.suspend_when_idle().has_value() && sleepy.suspended());
+	require(fake_pm_suspends == 1 && fake_gpio_interrupt == GPIO_INT_LEVEL_ACTIVE && !sleepy.suspend_after_ms());
+	fake_gpio_callback->handler(nullptr, fake_gpio_callback, 0);
+	require(fake_gpio_interrupt == GPIO_INT_DISABLE);
+	sleepy.resume_if_woken();
+	require(!sleepy.suspended() && fake_pm_resumes == 1);
+	simulated_time += 100;
+	require(sleepy.suspend_when_idle().has_value() && sleepy.suspended());
+	sleepy_hardware.outgoing.clear();
+	require(sleepy.write(source, 10).has_value());
+	require(!sleepy.suspended() && fake_pm_resumes == 2 && sleepy_hardware.outgoing.front() == 0);
+	sleepy.stop();
+	pump = {};
 
 	std::cout << "UART lifecycle, buffering, errors, timeout and TX completion tests passed\n";
 	return 0;

@@ -225,5 +225,24 @@ int main()
 	const auto pairing = backend.poll(0);
 	require(pairing && pairing->type == bluetooth_event::kind::pairing_changed && pairing->pairing);
 	require(!backend.send(payload, last_send.session));
+
+	unsigned wake_preambles = 0;
+	const auto previous_write = transport.on_write;
+	transport.on_write = [&](const std::uint8_t *bytes, std::size_t size) -> status
+	{
+		if (size == 1 && bytes[0] == 0)
+		{
+			++wake_preambles;
+		}
+		return previous_write(bytes, size);
+	};
+	transport.idle = ble_bridge::peer_sleep_after_ms;
+	const auto ticks_before_wake = fake_ticks;
+	(void)backend.open_pairing_window();
+	const auto idle_peer_woken_first = wake_preambles == 1 && fake_ticks - ticks_before_wake >= ble_bridge::peer_wake_guard_ms;
+	require(idle_peer_woken_first);
+	transport.idle = 0;
+	(void)backend.open_pairing_window();
+	require(wake_preambles == 1);
 	std::cout << "Handshake, fragmented UART, ACK matching, interleaved RX, stale sessions and timeout passed\n";
 }

@@ -39,3 +39,21 @@ status init_system_clock()
 }
 
 //////////////////////////////////////////////////////////////////////////
+
+void resume_system_clock()
+{
+	RCC->CR |= RCC_CR_HSEON;
+	while ((RCC->CR & RCC_CR_HSERDY) == 0)
+	{
+	}
+	RCC->CR |= RCC_CR_PLLON;
+	while ((RCC->CR & RCC_CR_PLLRDY) == 0)
+	{
+	}
+	RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_PLL;
+	while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL)
+	{
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////

@@ -621,7 +621,9 @@ int main()
 			}
 		};
 		require(idle_service.submit(sample).has_value());
+		require(idle_service.on_advertising_requested().has_value());
 	};
+	const auto advertisements_before_request = idle_backend.advertisements;
 	try
 	{
 		fake_task(fake_argument);
@@ -633,6 +635,7 @@ int main()
 		timeouts_before_sample.back() == bluetooth_config{}.idle_timeout_ms;
 	const auto sample_woke_bluetooth_task = fake_task_events > task_events_before_sample;
 	require(idle_poll_waited_for_events && sample_woke_bluetooth_task && !idle_backend.measurements.empty());
+	require(idle_backend.advertisements == advertisements_before_request + 1);
 	idle_service.stop();
 
 	for (unsigned field = 0; field < 15; ++field)

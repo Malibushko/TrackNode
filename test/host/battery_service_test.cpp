@@ -57,6 +57,27 @@ int main()
 	assert(!custom_schedule.pending());
 	custom_schedule.poll(130);
 	assert(custom_schedule.pending());
+	custom_schedule.complete(130, false);
+	custom_schedule.poll(169);
+	assert(!custom_schedule.pending());
+	custom_schedule.poll(170);
+	assert(custom_schedule.pending());
+	custom_schedule.complete(170, false);
+	custom_schedule.poll(249);
+	assert(!custom_schedule.pending());
+	custom_schedule.poll(250);
+	assert(custom_schedule.pending());
+	custom_schedule.complete(250, false);
+	custom_schedule.poll(349);
+	assert(!custom_schedule.pending());
+	custom_schedule.poll(350);
+	assert(custom_schedule.pending());
+	custom_schedule.complete(350, true);
+	custom_schedule.complete(360, false);
+	custom_schedule.poll(379);
+	assert(!custom_schedule.pending());
+	custom_schedule.poll(380);
+	assert(custom_schedule.pending());
 
 	battery_service::config settings{
 		.battery_input = adc_config{

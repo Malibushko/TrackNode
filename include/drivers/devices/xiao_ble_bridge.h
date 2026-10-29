@@ -28,6 +28,7 @@ private:
 	status consume_bytes(std::span<const std::uint8_t> bytes);
 	status wait_and_read_frames(std::uint32_t timeout_ms);
 	status read_frames(std::uint32_t timeout_ms);
+	status wake_peer_if_idle();
 	bool should_handle_frame(const ble_bridge::frame &frame) const;
 
 	status handle_frame(const ble_bridge::frame &frame);

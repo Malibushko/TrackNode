@@ -30,6 +30,11 @@ public:
 	{
 		return input.size();
 	}
+	TickType_t idle_ticks() const
+	{
+		return idle;
+	}
+	TickType_t idle = 0;
 	void set_rx_listener(TaskHandle_t task)
 	{
 		rx_listener = task;

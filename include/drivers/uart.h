@@ -77,6 +77,9 @@ public:
 	[[nodiscard]] size_t available() const;
 	[[nodiscard]] uint32_t dropped_count() const;
 	void set_rx_listener(TaskHandle_t task);
+	[[nodiscard]] TickType_t idle_ticks() const;
+	[[nodiscard]] bool transmitting() const { return tx_state_.load() == tx_state::transmitting; }
+	[[nodiscard]] ::pin rx_pin() const { return config_.rx; }
 
 	[[nodiscard]] UART_HandleTypeDef &handle()
 	{
@@ -114,6 +117,7 @@ private:
 	std::atomic<std::uint32_t> tx_error_detail_{0};
 	TaskHandle_t tx_waiter_{};
 	TaskHandle_t volatile rx_listener_ = nullptr;
+	std::atomic<TickType_t> last_activity_{0};
 
 	std::array<uint8_t, rx_dma_buffer_capacity> rx_dma_buf_{};
 

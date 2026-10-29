@@ -40,6 +40,13 @@ void power_profile::record_sleep()
 
 //////////////////////////////////////////////////////////////////////////
 
+void power_profile::record_stop()
+{
+	++stops_;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void power_profile::record_wake(std::uint16_t exception)
 {
 	const auto known_exception = exception < wakes_.size();
@@ -61,6 +68,7 @@ void power_profile::take_window(std::uint32_t now_ms, window &out)
 	out.duration_ms = now_ms - window_started_ms_;
 	out.slept_cycles = slept_cycles_;
 	out.sleeps = sleeps_;
+	out.stops = stops_;
 	out.untracked_switches = untracked_switches_;
 	collect_tasks(out);
 	collect_wake_sources(out);
@@ -157,6 +165,7 @@ void power_profile::reset_counters(std::uint32_t now_ms)
 	wakes_.fill(0);
 	slept_cycles_ = 0;
 	sleeps_ = 0;
+	stops_ = 0;
 	window_started_ms_ = now_ms;
 }
 

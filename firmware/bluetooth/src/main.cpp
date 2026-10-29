@@ -5,12 +5,16 @@
 #include "drivers/protocols/bridge_codec.h"
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
+
+#include <algorithm>
 
 namespace
 {
 constexpr char bluetooth_name[] = "TrackNode";
 constexpr std::uint32_t idle_wakeup_ms = 60000;
+const gpio_dt_spec bridge_rx_wake = GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), bridge_rx_gpios);
 
 k_sem activity;
 }
@@ -20,7 +24,11 @@ int main()
 	k_sem_init(&activity, 0, 1);
 
 	static ble::zephyr_uart transport{*DEVICE_DT_GET(DT_ALIAS(bridge_uart)), ble::uart_config{
-		ble_bridge::baud_rate
+		.baud_rate = ble_bridge::baud_rate,
+		.wake_input = &bridge_rx_wake,
+		.awake_hold_ms = ble_bridge::receiver_awake_hold_ms,
+		.peer_sleep_after_ms = ble_bridge::peer_sleep_after_ms,
+		.peer_wake_guard_ms = ble_bridge::peer_wake_guard_ms
 	}};
 
 	static ble::zephyr_bluetooth bluetooth{ble::bluetooth_config{
@@ -53,6 +61,7 @@ int main()
 
 		while (true)
 		{
+			transport.resume_if_woken();
 			const auto drained = bridge.drain();
 			if (!drained)
 			{
@@ -65,7 +74,9 @@ int main()
 				continue;
 			}
 
-			const auto wake_in_ms = bridge.next_wakeup_ms().value_or(idle_wakeup_ms);
+			(void)transport.suspend_when_idle();
+			const auto wake_in_ms = std::min(bridge.next_wakeup_ms().value_or(idle_wakeup_ms),
+				transport.suspend_after_ms().value_or(idle_wakeup_ms));
 			(void)k_sem_take(&activity, K_MSEC(wake_in_ms));
 		}
 	}

@@ -29,6 +29,7 @@ public:
 		std::uint32_t duration_ms = 0;
 		std::uint64_t slept_cycles = 0;
 		std::uint32_t sleeps = 0;
+		std::uint32_t stops = 0;
 		std::uint32_t untracked_switches = 0;
 		std::array<task_activity, task_capacity> tasks{};
 		std::size_t task_count = 0;
@@ -39,6 +40,7 @@ public:
 public: // Event recording
 	void record_task_switch(const void *task, const char *name);
 	void record_sleep();
+	void record_stop();
 	void record_wake(std::uint16_t exception);
 	void record_slept_cycles(std::uint32_t cycles);
 
@@ -65,6 +67,7 @@ private:
 	std::array<std::uint32_t, exception_capacity> wakes_{};
 	std::uint64_t slept_cycles_ = 0;
 	std::uint32_t sleeps_ = 0;
+	std::uint32_t stops_ = 0;
 	std::uint32_t window_started_ms_ = 0;
 };
 

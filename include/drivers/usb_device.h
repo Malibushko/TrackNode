@@ -39,6 +39,7 @@ public:
 	status poll();
 	status set_vbus_present(bool present);
 	[[nodiscard]] bool configured() const;
+	[[nodiscard]] bool attached() const { return attached_; }
 
 public:
 	status register_function(USBD_ClassTypeDef &driver, void *interface, usb_class_identity identity);

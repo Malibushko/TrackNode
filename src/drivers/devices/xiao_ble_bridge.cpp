@@ -5,6 +5,8 @@
 namespace
 {
 constexpr std::uint32_t response_timeout_ms = 1000;
+constexpr TickType_t peer_may_sleep_after = pdMS_TO_TICKS(ble_bridge::peer_sleep_after_ms);
+constexpr TickType_t peer_wake_guard = pdMS_TO_TICKS(ble_bridge::peer_wake_guard_ms);
 
 status ack_to_status(ble_bridge::ack_code code)
 {
@@ -458,8 +460,33 @@ status xiao_ble_bridge::send_and_wait_for_response(ble_bridge::frame &frame, ble
 
 //////////////////////////////////////////////////////////////////////////
 
+status xiao_ble_bridge::wake_peer_if_idle()
+{
+	const auto peer_may_sleep = transport_.idle_ticks() >= peer_may_sleep_after;
+	if (!peer_may_sleep)
+	{
+		return {};
+	}
+
+	const std::uint8_t delimiter = 0;
+	if (auto woke = transport_.write(&delimiter, ble_bridge::delimiter_size, response_timeout_ms); !woke)
+	{
+		return woke;
+	}
+	vTaskDelay(peer_wake_guard);
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 status xiao_ble_bridge::write_frame(const ble_bridge::frame &frame)
 {
+	if (auto woke = wake_peer_if_idle(); !woke)
+	{
+		initialized_ = false;
+		return woke;
+	}
+
 	std::array<std::uint8_t, ble_bridge::wire_frame_capacity> output{};
 	const auto size = codec_.encode(frame, output);
 	if (!size)

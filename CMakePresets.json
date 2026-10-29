@@ -26,7 +26,8 @@
         "FAULT_INJECTION_ENABLE": "OFF",
         "PERF_MEASURING": "OFF",
         "TRACK_NODE_DEBUG_IN_SLEEP": "OFF",
-        "TRACK_NODE_POWER_STATS": "ON"
+        "TRACK_NODE_POWER_STATS": "ON",
+        "TRACK_NODE_STOP_MODE": "ON"
       }
     },
     {

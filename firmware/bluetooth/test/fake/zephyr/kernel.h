@@ -140,3 +140,7 @@ inline void k_msgq_purge(k_msgq *q)
 	q->head = 0;
 	q->count = 0;
 }
+inline void k_msleep(std::int32_t ms)
+{
+	simulated_time += ms;
+}

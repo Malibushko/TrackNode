@@ -44,7 +44,8 @@ public:
 		pending_ = false;
 		attempted_ = true;
 		completed_at_ms_ = now_ms;
-		interval_ms_ = accepted ? config_.update_interval_ms : config_.retry_interval_ms;
+		failed_attempts_ = accepted ? 0 : failed_attempts_ + 1;
+		interval_ms_ = accepted ? config_.update_interval_ms : retry_interval_after_failures();
 	}
 
 	[[nodiscard]] bool pending() const
@@ -53,10 +54,22 @@ public:
 	}
 
 private:
+	[[nodiscard]] std::uint32_t retry_interval_after_failures() const
+	{
+		std::uint32_t interval = config_.retry_interval_ms;
+		for (std::uint32_t attempt = 1; attempt < failed_attempts_ && interval < config_.update_interval_ms; ++attempt)
+		{
+			interval *= 2;
+		}
+		return interval < config_.update_interval_ms ? interval : config_.update_interval_ms;
+	}
+
+private:
 	config config_{};
 	std::uint32_t requested_at_ms_ = 0;
 	std::uint32_t completed_at_ms_ = 0;
 	std::uint32_t interval_ms_ = 0;
+	std::uint32_t failed_attempts_ = 0;
 	bool pending_ = false;
 	bool attempted_ = false;
 };

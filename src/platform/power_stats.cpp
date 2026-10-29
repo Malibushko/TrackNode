@@ -4,6 +4,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include <algorithm>
+
 namespace
 {
 constexpr std::uint16_t first_irq_exception = 16;
@@ -86,6 +88,23 @@ void take_report(power_report &out)
 	out.core_clock_hz = SystemCoreClock;
 	out.tickless = configUSE_TICKLESS_IDLE != 0;
 	out.debug_clocks_in_low_power = debug_clocks_kept_in_low_power();
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void record_stop(std::uint32_t slept_ms)
+{
+	if constexpr (!enabled)
+	{
+		return;
+	}
+
+	const auto core_cycles_per_ms = SystemCoreClock / 1000u;
+	const auto slept_cycles = std::min<std::uint64_t>(static_cast<std::uint64_t>(slept_ms) * core_cycles_per_ms, UINT32_MAX);
+	profile.record_sleep();
+	profile.record_stop();
+	profile.record_slept_cycles(static_cast<std::uint32_t>(slept_cycles));
+	profile.record_wake(pending_exception());
 }
 
 //////////////////////////////////////////////////////////////////////////

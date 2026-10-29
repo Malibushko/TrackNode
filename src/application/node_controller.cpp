@@ -751,13 +751,16 @@ void node_controller::handle_read_power()
 	const auto &window = report.window;
 	const auto awake = awake_permille(window.slept_cycles, window.duration_ms, report.core_clock_hz);
 	const auto sleeps = rate_tenths_per_second(window.sleeps, window.duration_ms);
-	(void)reply("POWER window_ms=%lu tickless=%u awake=%lu.%lu%% sleeps=%lu.%lu/s debug_low_power=%u\r\n",
+	const auto stops = rate_tenths_per_second(window.stops, window.duration_ms);
+	(void)reply("POWER window_ms=%lu tickless=%u awake=%lu.%lu%% sleeps=%lu.%lu/s stops=%lu.%lu/s debug=%u\r\n",
 	            static_cast<unsigned long>(window.duration_ms),
 	            static_cast<unsigned>(report.tickless),
 	            static_cast<unsigned long>(awake / 10),
 	            static_cast<unsigned long>(awake % 10),
 	            static_cast<unsigned long>(sleeps / 10),
 	            static_cast<unsigned long>(sleeps % 10),
+	            static_cast<unsigned long>(stops / 10),
+	            static_cast<unsigned long>(stops % 10),
 	            static_cast<unsigned>(report.debug_clocks_in_low_power));
 
 	power_rate_line line{};

@@ -162,6 +162,19 @@ status bluetooth_service::on_pairing_mode_requested()
 
 //////////////////////////////////////////////////////////////////////////
 
+status bluetooth_service::on_advertising_requested()
+{
+	if (!task_)
+	{
+		return fail(component::service, error_code::not_initialized);
+	}
+	advertising_requested_.store(true);
+	wake_task();
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 bool bluetooth_service::can_accept_session(std::uint32_t session) const
 {
 	return !pairing_window_requested_.load() && session != 0 && session == command_session_.load();
@@ -328,7 +341,7 @@ bool bluetooth_service::has_pending_work() const
 	const auto log_stream_active = log_session_.load() != 0;
 	const auto history_transfer_active = journal_ && journal_->history_response_pending();
 	return output_queued || cached_output_waits_for_retry || log_stream_active || history_transfer_active ||
-		pairing_window_requested_.load();
+		pairing_window_requested_.load() || advertising_requested_.load();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -356,6 +369,10 @@ status bluetooth_service::process_pairing_request()
 
 status bluetooth_service::process_advertising()
 {
+	if (advertising_requested_.exchange(false))
+	{
+		advertise_pending_ = true;
+	}
 	if (!advertise_pending_)
 	{
 		return {};

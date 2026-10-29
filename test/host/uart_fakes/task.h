@@ -12,3 +12,6 @@ inline std::uint32_t ulTaskNotifyTake(BaseType_t, TickType_t ticks)
     return 0;
 }
 inline void vTaskNotifyGiveFromISR(TaskHandle_t, BaseType_t *) { ++fake_notifications; }
+inline TickType_t fake_uart_ticks = 0;
+inline TickType_t xTaskGetTickCount() { return fake_uart_ticks; }
+inline TickType_t xTaskGetTickCountFromISR() { return fake_uart_ticks; }

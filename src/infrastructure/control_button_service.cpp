@@ -122,6 +122,10 @@ status control_button_service::handle_gesture(const control_button_gesture &gest
 			}
 			return {};
 		case control_button_gesture::kind::released:
+			if (gesture.duration_ms < config_.pairing_hold_ms)
+			{
+				return bluetooth_service_.on_advertising_requested();
+			}
 			return {};
 	}
 	return fail(component::service, error_code::invalid_argument);

@@ -22,5 +22,6 @@ inline constexpr bool enabled = TRACK_NODE_POWER_STATS;
 
 void start();
 void take_report(power_report &out);
+void record_stop(std::uint32_t slept_ms);
 const char *exception_name(std::uint16_t exception);
 }

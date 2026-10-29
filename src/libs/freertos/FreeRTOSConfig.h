@@ -129,6 +129,20 @@ void track_node_power_after_sleep( void );
 #define configPOST_SLEEP_PROCESSING( idle_time )   track_node_power_after_sleep()
 #endif
 
+#ifndef TRACK_NODE_STOP_MODE
+#define TRACK_NODE_STOP_MODE                       0
+#endif
+#if TRACK_NODE_STOP_MODE && TRACK_NODE_TICKLESS_IDLE
+#ifdef __cplusplus
+extern "C" {
+#endif
+void track_node_suppress_ticks_and_sleep( uint32_t expected_idle_ticks );
+#ifdef __cplusplus
+}
+#endif
+#define portSUPPRESS_TICKS_AND_SLEEP( xExpectedIdleTime )    track_node_suppress_ticks_and_sleep( xExpectedIdleTime )
+#endif
+
 /* configMAX_PRIORITIES Sets the number of available task priorities.  Tasks can
  * be assigned priorities of 0 to (configMAX_PRIORITIES - 1).  Zero is the
  * lowest priority. */

@@ -50,6 +50,9 @@ constexpr std::size_t raw_frame_capacity = header_size + payload_capacity + chec
 constexpr std::size_t cobs_block_capacity = 254;
 constexpr std::size_t cobs_code_size = 1;
 constexpr std::size_t delimiter_size = 1;
+constexpr std::uint32_t peer_sleep_after_ms = 50;
+constexpr std::uint32_t peer_wake_guard_ms = 10;
+constexpr std::uint32_t receiver_awake_hold_ms = 100;
 constexpr std::size_t wire_frame_capacity = raw_frame_capacity +
 	raw_frame_capacity / cobs_block_capacity + cobs_code_size + delimiter_size;
 

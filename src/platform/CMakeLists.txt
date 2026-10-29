@@ -3,4 +3,5 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     interrupts.cpp
     hardware.cpp
     power_stats.cpp
+    low_power.cpp
 )

@@ -12,6 +12,8 @@ constexpr std::uint8_t read_data_command = 0x03;
 constexpr std::uint8_t page_program_command = 0x02;
 constexpr std::uint8_t sector_erase_command = 0x20;
 constexpr std::uint8_t release_power_down_command = 0xAB;
+constexpr std::uint8_t power_down_command = 0xB9;
+constexpr std::uint32_t release_wait_iterations = 600;
 constexpr std::uint8_t minimum_capacity_code = 16;
 constexpr std::uint8_t maximum_capacity_code = 24;
 constexpr std::uint8_t busy_flag = 0x01;
@@ -51,12 +53,33 @@ status w25qxx::init()
 		return identified;
 	}
 	identified_ = true;
-	return {};
+	return enter_power_down();
 }
 
 //////////////////////////////////////////////////////////////////////////
 
 status w25qxx::read(std::uint32_t address, std::span<std::uint8_t> destination)
+{
+	return while_awake([&]{ return read_awake(address, destination); });
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status w25qxx::program(std::uint32_t address, std::span<const std::uint8_t> source)
+{
+	return while_awake([&]{ return program_awake(address, source); });
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status w25qxx::erase_sector(std::uint32_t address)
+{
+	return while_awake([&]{ return erase_sector_awake(address); });
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status w25qxx::read_awake(std::uint32_t address, std::span<std::uint8_t> destination)
 {
 	if (!identified_)
 	{
@@ -81,7 +104,7 @@ status w25qxx::read(std::uint32_t address, std::span<std::uint8_t> destination)
 
 //////////////////////////////////////////////////////////////////////////
 
-status w25qxx::program(std::uint32_t address, std::span<const std::uint8_t> source)
+status w25qxx::program_awake(std::uint32_t address, std::span<const std::uint8_t> source)
 {
 	if (!identified_)
 	{
@@ -107,7 +130,7 @@ status w25qxx::program(std::uint32_t address, std::span<const std::uint8_t> sour
 
 //////////////////////////////////////////////////////////////////////////
 
-status w25qxx::erase_sector(std::uint32_t address)
+status w25qxx::erase_sector_awake(std::uint32_t address)
 {
 	if (!identified_)
 	{
@@ -289,6 +312,55 @@ status w25qxx::release_power_down()
 		}
 	}
 	pause_one_millisecond();
+	powered_down_ = false;
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status w25qxx::wake()
+{
+	if (!powered_down_)
+	{
+		return {};
+	}
+
+	const std::uint8_t command = release_power_down_command;
+	{
+		const spi_cs_guard guard{bus_, pin_cs};
+		if (!guard.asserted())
+		{
+			return fail(component::spi_device, error_code::device_error);
+		}
+		if (auto sent = bus_.transmit(std::span{ &command, 1 }); !sent)
+		{
+			return sent;
+		}
+	}
+	for (volatile std::uint32_t iteration = 0; iteration < release_wait_iterations; ++iteration)
+	{
+	}
+	powered_down_ = false;
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status w25qxx::enter_power_down()
+{
+	const std::uint8_t command = power_down_command;
+	{
+		const spi_cs_guard guard{bus_, pin_cs};
+		if (!guard.asserted())
+		{
+			return fail(component::spi_device, error_code::device_error);
+		}
+		if (auto sent = bus_.transmit(std::span{ &command, 1 }); !sent)
+		{
+			return sent;
+		}
+	}
+	powered_down_ = true;
 	return {};
 }
 

@@ -14,6 +14,7 @@ option(TRACK_NODE_ENABLE_BLUETOOTH "Include unfinished Bluetooth scaffold" ON)
 option(NO_STORAGE "Build TrackNode without SD card and filesystem" ON)
 option(TRACK_NODE_POWER_STATS "Count task wakeups and CPU sleep for GET POWER" ON)
 option(TRACK_NODE_POWER_FLOOR "Build the power floor measurement firmware" ON)
+option(TRACK_NODE_STOP_MODE "Sleep in STOP with the RTC as tick source (tickless builds)" ON)
 
 include(cmake/bluetooth.cmake)
 
@@ -79,7 +80,8 @@ if(CMAKE_CROSSCOMPILING)
         TRACK_NODE_ENABLE_LORA=$<BOOL:${TRACK_NODE_ENABLE_LORA}>
         TRACK_NODE_ENABLE_GNSS=$<BOOL:${TRACK_NODE_ENABLE_GNSS}>
         TRACK_NODE_ENABLE_BLUETOOTH=$<BOOL:${TRACK_NODE_ENABLE_BLUETOOTH}>
-        TRACK_NODE_POWER_STATS=$<BOOL:${TRACK_NODE_POWER_STATS}>)
+        TRACK_NODE_POWER_STATS=$<BOOL:${TRACK_NODE_POWER_STATS}>
+        TRACK_NODE_STOP_MODE=$<BOOL:${TRACK_NODE_STOP_MODE}>)
 
     if(NO_STORAGE)
         target_compile_definitions(${TRACK_NODE_TARGET} PRIVATE NO_STORAGE=1)

@@ -308,6 +308,7 @@ status uart::begin_write(const uint8_t *data, size_t size)
 
 	tx_waiter_ = xTaskGetCurrentTaskHandle();
 	tx_error_detail_.store(HAL_UART_ERROR_NONE);
+	last_activity_.store(xTaskGetTickCount(), std::memory_order_relaxed);
 	tx_state_.store(tx_state::transmitting);
 
 	const auto transmitted = HAL_UART_Transmit_DMA(&handle_, data, size);
@@ -409,6 +410,7 @@ void uart::on_rx_event(size_t write_pos, BaseType_t *higher_priority_woken)
 	}
 
 	drain_rx(write_pos, higher_priority_woken);
+	last_activity_.store(xTaskGetTickCountFromISR(), std::memory_order_relaxed);
 
 	if (write_pos == rx_dma_buf_.size())
 	{
@@ -427,6 +429,7 @@ void uart::on_tx_event(BaseType_t *higher_priority_woken)
 	}
 
 	tx_state_.store(tx_state::completed);
+	last_activity_.store(xTaskGetTickCountFromISR(), std::memory_order_relaxed);
 
 	if (tx_waiter_)
 	{
@@ -567,6 +570,13 @@ uint32_t uart::dropped_count() const
 void uart::set_rx_listener(TaskHandle_t task)
 {
 	rx_listener_ = task;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+TickType_t uart::idle_ticks() const
+{
+	return xTaskGetTickCount() - last_activity_.load(std::memory_order_relaxed);
 }
 
 //////////////////////////////////////////////////////////////////////////
