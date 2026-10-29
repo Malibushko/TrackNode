@@ -232,6 +232,25 @@ result<std::size_t> zephyr_uart::read(mutable_data_view output, std::uint32_t ti
 //////////////////////////////////////////////////////////////////////////
 
 
+void zephyr_uart::set_activity_signal(k_sem *signal)
+{
+	const auto key = k_spin_lock(&lock_);
+	activity_ = signal;
+	k_spin_unlock(&lock_, key);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_uart::signal_activity()
+{
+	if (activity_)
+	{
+		k_sem_give(activity_);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 void zephyr_uart::interrupt(const device *, void *context)
 {
 	static_cast<zephyr_uart *>(context)->handle_interrupt();
@@ -253,6 +272,7 @@ void zephyr_uart::handle_interrupt()
 	{
 		receive_error_ = true;
 		k_sem_give(&receive_ready_);
+		signal_activity();
 	}
 
 	if (uart_irq_rx_ready(&transport_) > 0)
@@ -269,6 +289,7 @@ void zephyr_uart::handle_interrupt()
 					receive_error_ = true;
 				}
 				k_sem_give(&receive_ready_);
+				signal_activity();
 			}
 		} while (received > 0);
 
@@ -276,6 +297,7 @@ void zephyr_uart::handle_interrupt()
 		{
 			receive_error_ = true;
 			k_sem_give(&receive_ready_);
+			signal_activity();
 		}
 	}
 

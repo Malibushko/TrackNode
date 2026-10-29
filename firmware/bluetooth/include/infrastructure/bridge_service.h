@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include "core/result.h"
 #include "common/bluetooth_types.h"
 #include "drivers/protocols/bridge_stream_parser.h"
@@ -22,10 +23,9 @@ struct bridge_config
 	ble_bridge::bridge_codec &codec;
 	std::uint32_t (*uptime_ms)() = nullptr;
 
-	std::uint32_t poll_frequency_ms = 1;
-	std::uint32_t poll_transport_timeout_ms = 10;
-	std::uint32_t poll_bluetooth_timeout_ms = 0;
+	std::uint32_t write_timeout_ms = 10;
 	std::uint32_t handshake_retry_ms = 1000;
+	std::size_t max_poll_rounds = 32;
 };
 
 class bridge_service
@@ -37,6 +37,8 @@ public:
 	void stop();
 
 	status poll();
+	result<bool> drain();
+	[[nodiscard]] std::optional<std::uint32_t> next_wakeup_ms() const;
 
 private:
 	status poll_transport();
@@ -75,6 +77,7 @@ private:
 	bool handshake_requested_ = false;
 
 	bool reported_pairing_ = false;
+	bool poll_found_work_ = false;
 
 	bool initialized_{ false };
 };

@@ -53,8 +53,13 @@ int main()
 	hardware.fill_failure = false;
 	require(transport.write(source, 10).has_value());
 
+	k_sem activity;
+	k_sem_init(&activity, 0, 1);
+	transport.set_activity_signal(&activity);
 	hardware.incoming.insert(hardware.incoming.end(), payload.begin(), payload.end());
 	fire(hardware);
+	require(activity.count == 1);
+	transport.set_activity_signal(nullptr);
 	const auto first_read = transport.read({output.data(), 3}, 0);
 	require(first_read && *first_read == 3);
 	require(std::equal(output.begin(), output.begin() + 3, payload.begin()));

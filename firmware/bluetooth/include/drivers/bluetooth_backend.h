@@ -3,6 +3,7 @@
 #include "common/buffer.h"
 #include "core/result.h"
 #include "common/bluetooth_types.h"
+#include <optional>
 #include "drivers/protocols/bluetooth_measurement.h"
 #include "drivers/protocols/bluetooth_battery.h"
 
@@ -33,5 +34,9 @@ public:
 	}
 
 	virtual result<bluetooth_event> poll(std::uint32_t timeout_ms) = 0;
+	[[nodiscard]] virtual std::optional<std::uint32_t> next_deadline_ms() const
+	{
+		return std::nullopt;
+	}
 };
 }

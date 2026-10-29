@@ -10,10 +10,15 @@
 namespace
 {
 constexpr char bluetooth_name[] = "TrackNode";
+constexpr std::uint32_t idle_wakeup_ms = 60000;
+
+k_sem activity;
 }
 
 int main()
 {
+	k_sem_init(&activity, 0, 1);
+
 	static ble::zephyr_uart transport{*DEVICE_DT_GET(DT_ALIAS(bridge_uart)), ble::uart_config{
 		ble_bridge::baud_rate
 	}};
@@ -30,12 +35,12 @@ int main()
 		.codec = codec,
 		.uptime_ms = []{ return k_uptime_get_32(); },
 
-		.poll_frequency_ms = 1,
-		.poll_transport_timeout_ms = 10,
-		.poll_bluetooth_timeout_ms = 0
+		.write_timeout_ms = 10
 	};
 
 	static ble::bridge_service bridge{bridge_config};
+	transport.set_activity_signal(&activity);
+	bluetooth.set_activity_signal(&activity);
 
 	while (true)
 	{
@@ -48,15 +53,20 @@ int main()
 
 		while (true)
 		{
-			const auto polled = bridge.poll();
-			if (!polled)
+			const auto drained = bridge.drain();
+			if (!drained)
 			{
 				bridge.stop();
 				k_msleep(1000);
 				break;
 			}
+			if (*drained)
+			{
+				continue;
+			}
 
-			k_msleep(bridge_config.poll_frequency_ms);
+			const auto wake_in_ms = bridge.next_wakeup_ms().value_or(idle_wakeup_ms);
+			(void)k_sem_take(&activity, K_MSEC(wake_in_ms));
 		}
 	}
 }

@@ -67,6 +67,7 @@ status bridge_service::poll()
 		return fail(component::service, error_code::not_initialized);
 	}
 
+	poll_found_work_ = false;
 	return poll_bluetooth()
 		.and_then([&]{ return poll_transport(); })
 		.and_then([&]{ return update_handshake(); })
@@ -75,10 +76,49 @@ status bridge_service::poll()
 
 //////////////////////////////////////////////////////////////////////////
 
+result<bool> bridge_service::drain()
+{
+	for (std::size_t round = 0; round < config_.max_poll_rounds; ++round)
+	{
+		if (const auto polled = poll(); !polled)
+		{
+			return tl::unexpected(polled.error());
+		}
+		if (!poll_found_work_)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+std::optional<std::uint32_t> bridge_service::next_wakeup_ms() const
+{
+	auto earliest = config_.bluetooth.next_deadline_ms();
+	const auto handshake_pending = initialized_ && bridge_session_ == 0;
+	if (handshake_pending)
+	{
+		const auto elapsed = config_.uptime_ms() - last_handshake_ms_;
+		const auto retry_wait_running = handshake_requested_ && elapsed < config_.handshake_retry_ms;
+		const std::uint32_t until_retry = retry_wait_running ? config_.handshake_retry_ms - elapsed : 0u;
+		if (!earliest || until_retry < *earliest)
+		{
+			earliest = until_retry;
+		}
+	}
+
+	return earliest;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 
 status bridge_service::poll_transport()
 {
-	const auto received = config_.transport.read({buffer_.data(), buffer_.size()}, config_.poll_transport_timeout_ms);
+	const auto received = config_.transport.read({buffer_.data(), buffer_.size()}, 0);
 	if (!received)
 	{
 		if (received.error().code == error_code::timeout)
@@ -90,6 +130,7 @@ status bridge_service::poll_transport()
 		return tl::unexpected(received.error());
 	}
 
+	poll_found_work_ = poll_found_work_ || *received != 0;
 	for (std::size_t index = 0; index < *received; ++index)
 	{
 		const auto event = parser_.feed(buffer_[index]);
@@ -109,12 +150,13 @@ status bridge_service::poll_transport()
 
 status bridge_service::poll_bluetooth()
 {
-	const auto event = config_.bluetooth.poll(config_.poll_bluetooth_timeout_ms);
+	const auto event = config_.bluetooth.poll(0);
 	if (!event)
 	{
 		return tl::unexpected(event.error());
 	}
 
+	poll_found_work_ = poll_found_work_ || event->type != bluetooth_event::kind::idle;
 	switch (event->type)
 	{
 		case bluetooth_event::kind::link_changed:
@@ -164,7 +206,7 @@ status bridge_service::update_handshake()
 		return {};
 	}
 	const std::uint8_t delimiter = 0;
-	const auto sent = config_.transport.write({&delimiter, ble_bridge::delimiter_size}, config_.poll_transport_timeout_ms)
+	const auto sent = config_.transport.write({&delimiter, ble_bridge::delimiter_size}, config_.write_timeout_ms)
 		.and_then([&]{ return write_frame(ble_bridge::frame{}); });
 	if (sent)
 	{
@@ -402,7 +444,7 @@ status bridge_service::write_frame(const ble_bridge::frame &frame)
 		return fail(component::protocol, error_code::invalid_config);
 	}
 
-	return config_.transport.write({output.data(), *encoded}, config_.poll_transport_timeout_ms);
+	return config_.transport.write({output.data(), *encoded}, config_.write_timeout_ms);
 }
 
 //////////////////////////////////////////////////////////////////////////

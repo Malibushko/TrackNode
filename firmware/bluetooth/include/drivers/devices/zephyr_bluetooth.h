@@ -16,6 +16,9 @@ struct bluetooth_config
 	const char *name = nullptr;
 	std::uint32_t pairing_window_ms = 60000;
 	std::uint32_t security_timeout_ms = 15000;
+	std::uint32_t unbonded_fast_advertising_ms = 300000;
+	std::uint32_t requested_fast_advertising_ms = 30000;
+	std::uint32_t advertising_retry_ms = 100;
 };
 
 class zephyr_bluetooth final : public bluetooth_backend
@@ -42,6 +45,8 @@ public:
 	status update_battery(const bluetooth_battery::snapshot &value) override;
 
 	result<bluetooth_event> poll(std::uint32_t timeout_ms) override;
+	[[nodiscard]] std::optional<std::uint32_t> next_deadline_ms() const override;
+	void set_activity_signal(k_sem *signal);
 
 private:
 	static constexpr std::size_t event_queue_depth = 8;
@@ -79,6 +84,10 @@ private:
 	connection_ref revoke_current_connection_locked();
 	status disconnect_current_client(const connection_ref &connection);
 	void close_pairing_window_locked();
+	void extend_fast_advertising_locked(std::int64_t until);
+	status apply_advertising();
+	void signal_activity_locked();
+	static std::size_t count_bonds();
 
 	[[nodiscard]] status check_state() const;
 
@@ -114,6 +123,10 @@ private:
 
 	bt_data advertise_data_[2]{};
 	bool advertise_requested_ = false;
+	bool advertising_ = false;
+	bool advertising_fast_ = false;
+	std::int64_t fast_advertising_until_ = 0;
+	k_sem *activity_ = nullptr;
 
 	bool initialized_{false};
 	bool overflow_ = false;

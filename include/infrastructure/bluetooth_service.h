@@ -30,6 +30,7 @@ public:
 	void stop();
 
 	status on_pairing_mode_requested();
+	status on_advertising_requested();
 
 	[[nodiscard]] bool can_accept_session(std::uint32_t session) const override;
 	status submit(const telemetry_sample &sample) override;
@@ -92,6 +93,7 @@ private:
 	QueueHandle_t logs_ = nullptr;
 
 	std::atomic<bool> pairing_window_requested_{false};
+	std::atomic<bool> advertising_requested_{false};
 	std::atomic<std::uint32_t> command_session_{0};
 	std::uint32_t blocked_session_ = 0;
 	bluetooth_link link_{};

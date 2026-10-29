@@ -1,6 +1,7 @@
 #include "drivers/devices/zephyr_bluetooth.h"
 #include "core/zephyr_error.h"
 
+#include <algorithm>
 #include <cstring>
 #include <type_traits>
 #include <utility>
@@ -129,12 +130,15 @@ status zephyr_bluetooth::init()
 	advertise_data_[0] = BT_DATA(BT_DATA_FLAGS, &flags, sizeof(flags));
 	advertise_data_[1] = BT_DATA(BT_DATA_NAME_COMPLETE, config_.name, static_cast<uint8_t>(std::strlen(config_.name)));
 
+	const auto unbonded_device = count_bonds() == 0;
 	bool published = false;
 	{
 		spin_lock_guard guard{callback_lock};
 		if (instance == nullptr)
 		{
 			overflow_ = false;
+			advertising_ = false;
+			fast_advertising_until_ = unbonded_device ? k_uptime_get() + config_.unbonded_fast_advertising_ms : 0;
 			initialized_ = true;
 			instance = this;
 			published = true;
@@ -158,7 +162,7 @@ status zephyr_bluetooth::init()
 		return bound;
 	}
 
-	if (const auto advertised = start_advertise(); !advertised)
+	if (const auto advertised = apply_advertising(); !advertised)
 	{
 		stop();
 		return advertised;
@@ -198,6 +202,10 @@ void zephyr_bluetooth::stop()
 		auth_registered_ = false;
 	}
 	bt_le_adv_stop();
+	{
+		spin_lock_guard guard{callback_lock};
+		advertising_ = false;
+	}
 	bt_conn_cb_unregister(&connection_callback_);
 	gatt_.unbind();
 	if (connection)
@@ -217,13 +225,11 @@ void zephyr_bluetooth::stop()
 
 status zephyr_bluetooth::start_advertise()
 {
-	const int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, advertise_data_, std::size(advertise_data_), nullptr, 0);
-	if (!err || err == -EALREADY)
 	{
-		return {};
+		spin_lock_guard guard{callback_lock};
+		extend_fast_advertising_locked(k_uptime_get() + config_.requested_fast_advertising_ms);
 	}
-
-	return fail(component::bluetooth, from_zephyr_error(err));
+	return apply_advertising();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -233,6 +239,8 @@ status zephyr_bluetooth::stop_advertise()
 	const int err = bt_le_adv_stop();
 	if (!err || err == -EALREADY)
 	{
+		spin_lock_guard guard{callback_lock};
+		advertising_ = false;
 		return {};
 	}
 
@@ -252,8 +260,10 @@ status zephyr_bluetooth::open_pairing_window()
 			return fail(component::bluetooth, error_code::not_initialized);
 		}
 		pairing_deadline_ = k_uptime_get() + config_.pairing_window_ms;
+		extend_fast_advertising_locked(pairing_deadline_);
 		connection = revoke_current_connection_locked();
 		advertise_requested_ = true;
+		signal_activity_locked();
 	}
 	return disconnect_current_client(connection);
 }
@@ -338,6 +348,59 @@ status zephyr_bluetooth::update_battery(const bluetooth_battery::snapshot &value
 //////////////////////////////////////////////////////////////////////////
 
 
+std::optional<std::uint32_t> zephyr_bluetooth::next_deadline_ms() const
+{
+	spin_lock_guard guard{callback_lock};
+	if (!initialized_)
+	{
+		return std::nullopt;
+	}
+
+	const auto now = k_uptime_get();
+	std::optional<std::int64_t> earliest;
+	const auto consider = [&](std::int64_t at) {
+		if (!earliest || at < *earliest)
+		{
+			earliest = at;
+		}
+	};
+	if (pairing_deadline_ != 0)
+	{
+		consider(pairing_deadline_);
+	}
+	const auto establishing_security = active_connection_ && !link_.connected && !revoked_;
+	if (establishing_security)
+	{
+		consider(security_deadline_);
+	}
+	const auto fast_advertising_running = advertising_ && advertising_fast_;
+	if (fast_advertising_running)
+	{
+		consider(fast_advertising_until_);
+	}
+	const auto advertising_retry_pending = advertise_requested_ && !active_connection_;
+	if (advertising_retry_pending)
+	{
+		consider(now + config_.advertising_retry_ms);
+	}
+	if (!earliest)
+	{
+		return std::nullopt;
+	}
+
+	return static_cast<std::uint32_t>(std::max<std::int64_t>(*earliest - now, 0));
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_bluetooth::set_activity_signal(k_sem *signal)
+{
+	spin_lock_guard guard{callback_lock};
+	activity_ = signal;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 result<bluetooth_event> zephyr_bluetooth::poll(std::uint32_t timeout_ms)
 {
 	if (const auto state = check_state(); !state)
@@ -389,6 +452,8 @@ void zephyr_bluetooth::on_connected(bt_conn *conn, std::uint8_t err)
 		{
 			return;
 		}
+		instance->advertising_ = false;
+		instance->signal_activity_locked();
 		const auto pairing_window_open = k_uptime_get() < instance->pairing_deadline_;
 		const auto bonded_peer_outside_pairing = !pairing_window_open && bond.found;
 		admitted = pairing_window_open || bonded_peer_outside_pairing;
@@ -452,6 +517,7 @@ void zephyr_bluetooth::on_recycled()
 	if (instance)
 	{
 		instance->advertise_requested_ = true;
+		instance->signal_activity_locked();
 	}
 }
 
@@ -711,14 +777,15 @@ void zephyr_bluetooth::process_security()
 		{
 			close_pairing_window_locked();
 		}
-		advertise = advertise_requested_ && !active_connection_;
+		const auto fast_advertising_window_over = advertising_ && advertising_fast_ && now >= fast_advertising_until_;
+		advertise = (advertise_requested_ || fast_advertising_window_over) && !active_connection_;
 	}
 	if (expired)
 	{
 		bt_conn_auth_cancel(expired.get());
 		bt_conn_disconnect(expired.get(), BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 	}
-	if (advertise && start_advertise())
+	if (advertise && apply_advertising())
 	{
 		spin_lock_guard guard{callback_lock};
 		advertise_requested_ = false;
@@ -760,6 +827,72 @@ status zephyr_bluetooth::disconnect_current_client(const connection_ref &connect
 void zephyr_bluetooth::close_pairing_window_locked()
 {
 	pairing_deadline_ = 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_bluetooth::extend_fast_advertising_locked(std::int64_t until)
+{
+	fast_advertising_until_ = std::max(fast_advertising_until_, until);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+status zephyr_bluetooth::apply_advertising()
+{
+	static const bt_le_adv_param fast_parameters = BT_LE_ADV_PARAM_INIT(BT_LE_ADV_OPT_CONN,
+		BT_GAP_ADV_FAST_INT_MIN_1, BT_GAP_ADV_FAST_INT_MAX_1, nullptr);
+	static const bt_le_adv_param slow_parameters = BT_LE_ADV_PARAM_INIT(BT_LE_ADV_OPT_CONN,
+		BT_GAP_ADV_SLOW_INT_MIN, BT_GAP_ADV_SLOW_INT_MAX, nullptr);
+
+	bool fast = false;
+	bool restart = false;
+	{
+		spin_lock_guard guard{callback_lock};
+		fast = k_uptime_get() < fast_advertising_until_;
+		const auto advertising_matches_policy = advertising_ && advertising_fast_ == fast;
+		if (active_connection_ || advertising_matches_policy)
+		{
+			return {};
+		}
+		restart = advertising_;
+	}
+	if (restart)
+	{
+		(void)bt_le_adv_stop();
+	}
+
+	const int err = bt_le_adv_start(fast ? &fast_parameters : &slow_parameters, advertise_data_, std::size(advertise_data_), nullptr, 0);
+	if (err != 0 && err != -EALREADY)
+	{
+		return fail(component::bluetooth, from_zephyr_error(err));
+	}
+
+	spin_lock_guard guard{callback_lock};
+	advertising_ = true;
+	advertising_fast_ = fast;
+	return {};
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+void zephyr_bluetooth::signal_activity_locked()
+{
+	if (activity_)
+	{
+		k_sem_give(activity_);
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+std::size_t zephyr_bluetooth::count_bonds()
+{
+	std::size_t count = 0;
+	bt_foreach_bond(BT_ID_DEFAULT, [](const bt_bond_info *, void *context) {
+		++*static_cast<std::size_t *>(context);
+	}, &count);
+	return count;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -807,6 +940,7 @@ status zephyr_bluetooth::push_event(raw_event::type kind, connection_ref &connec
 	}
 
 	(void)connection.release();
+	signal_activity_locked();
 	return {};
 }
 

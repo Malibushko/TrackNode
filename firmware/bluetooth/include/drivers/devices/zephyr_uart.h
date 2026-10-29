@@ -26,12 +26,14 @@ public:
 
 	status write(data_view data, std::uint32_t timeout_ms) override;
 	result<std::size_t> read(mutable_data_view output, std::uint32_t timeout_ms) override;
+	void set_activity_signal(k_sem *signal);
 
 private:
 	static constexpr std::size_t receive_capacity = 1024;
 
 	static void interrupt(const device *transport, void *context);
 	void handle_interrupt();
+	void signal_activity();
 
 private:
 	const device &transport_;
@@ -48,6 +50,7 @@ private:
 	std::size_t transmit_remaining_ = 0;
 
 	k_spinlock lock_{};
+	k_sem *activity_ = nullptr;
 	bool initialized_ = false;
 	bool receive_error_ = false;
 	bool transmit_error_ = false;

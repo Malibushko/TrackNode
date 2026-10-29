@@ -159,6 +159,38 @@ int main()
 	msgq_get_hook = {};
 	require(spinlock_depth == 0);
 
+	fake_bond_count = 0;
+	k_sem activity;
+	k_sem_init(&activity, 0, 1);
+	bluetooth.set_activity_signal(&activity);
+	require(bluetooth.init().has_value());
+	fake_bond_count = 1;
+	require(advertising_interval_min == BT_GAP_ADV_FAST_INT_MIN_1);
+	const auto unbonded_fast_window = bluetooth.next_deadline_ms();
+	require(unbonded_fast_window && *unbonded_fast_window == 300000);
+	simulated_time += 300000;
+	require(bluetooth.poll(0)->type == ble::bluetooth_event::kind::idle);
+	require(advertising_interval_min == BT_GAP_ADV_SLOW_INT_MIN);
+	require(!bluetooth.next_deadline_ms());
+	const auto starts_before_request = advertising_starts;
+	require(bluetooth.start_advertise().has_value());
+	const auto requested_fast_burst = advertising_starts == starts_before_request + 1 &&
+		advertising_interval_min == BT_GAP_ADV_FAST_INT_MIN_1;
+	require(requested_fast_burst && *bluetooth.next_deadline_ms() == 30000);
+	require(bluetooth.start_advertise().has_value());
+	require(advertising_starts == starts_before_request + 1);
+	activity.count = 0;
+	registered_callback->connected(&connection, 0);
+	require(activity.count == 1);
+	const auto connected_link = bluetooth.poll(0);
+	require(connected_link && connected_link->link.connected);
+	require(!bluetooth.next_deadline_ms());
+	registered_callback->disconnected(&connection, 0x13);
+	require(bluetooth.poll(0).has_value());
+	bluetooth.stop();
+	bluetooth.set_activity_signal(nullptr);
+	require(spinlock_depth == 0);
+
 	std::cout << "Bluetooth rollback, retry, stop/reinit and error mapping passed\n";
 	return 0;
 }

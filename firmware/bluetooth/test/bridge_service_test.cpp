@@ -174,8 +174,7 @@ int main()
 		.bluetooth = bluetooth,
 		.codec = codec,
 		.uptime_ms = []{ return now_ms; },
-		.poll_transport_timeout_ms = 0,
-		.poll_bluetooth_timeout_ms = 0
+		.write_timeout_ms = 0
 	};
 	ble::bridge_service bridge{config};
 	const auto push = [&](const ble_bridge::frame &frame)
@@ -215,8 +214,10 @@ int main()
 	require(bridge.start().has_value());
 	require(bridge.poll().has_value());
 	require(transport.written.back().type == ble_bridge::frame_type::hello && transport.written.back().session == 0);
+	require(bridge.next_wakeup_ms() == 1000u);
 	const auto initial_requests = transport.written.size();
 	now_ms = 999;
+	require(bridge.next_wakeup_ms() == 1u);
 	require(bridge.poll().has_value());
 	require(transport.written.size() == initial_requests);
 	now_ms = 1000;
@@ -439,6 +440,14 @@ int main()
 	bluetooth.pairing = false;
 	require(bridge.poll().has_value());
 	require(transport.written.back().type == ble_bridge::frame_type::pairing_state && transport.written.back().payload[0] == 0);
+
+	const auto acks_before_drain = transport.written.size();
+	push(fresh);
+	push(fresh);
+	const auto drained = bridge.drain();
+	const auto both_frames_answered_in_one_drain = transport.written.size() == acks_before_drain + 2;
+	require(drained && !*drained && both_frames_answered_in_one_drain);
+	require(!bridge.next_wakeup_ms());
 
 	bluetooth.overflow = true;
 	require(bridge.poll().error().code == ble::error_code::overflow);
