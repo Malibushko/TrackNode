@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "track-node") (type "KiCad") (uri "${KIPRJMOD}/../track-node/lib/track-node.pretty") (options "") (descr ""))
+)
