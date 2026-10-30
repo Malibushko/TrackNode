@@ -53,14 +53,15 @@ bool append_power_rate(power_rate_line &line, const char *name, std::uint32_t co
 
 //////////////////////////////////////////////////////////////////////////
 
-result<gnss_service::snapshot_t> read_gnss(gnss_service *gnss)
+result<gnss_service::snapshot_t> read_gnss([[maybe_unused]] gnss_service *gnss)
 {
-	if (!gnss)
+#if TRACK_NODE_ENABLE_GNSS
+	if (gnss)
 	{
-		return fail(component::service, error_code::not_initialized);
+		return gnss->read();
 	}
-
-	return gnss->read();
+#endif
+	return fail(component::service, error_code::not_initialized);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -279,8 +280,11 @@ bool node_controller::can_sample_battery(std::uint32_t now_ms) const
 {
 #ifndef NO_STORAGE
 	return false;
-#else
+#elif TRACK_NODE_ENABLE_GNSS
 	return !gnss_ || !gnss_->is_high_power_active(now_ms);
+#else
+	(void)now_ms;
+	return true;
 #endif
 }
 
@@ -517,10 +521,12 @@ bool node_controller::ensure_sample_available()
 
 void node_controller::set_power_mode(power_mode mode)
 {
+#if TRACK_NODE_ENABLE_GNSS
 	if (gnss_)
 	{
 		gnss_->set_power_mode(mode);
 	}
+#endif
 	telemetry_.set_power_mode(mode);
 }
 
@@ -560,6 +566,7 @@ void node_controller::handle_read_pressure()
 
 void node_controller::handle_read_gnss()
 {
+#if TRACK_NODE_ENABLE_GNSS
 	if (!gnss_)
 	{
 		(void)reply("ERR GNSS_DISABLED\r\n");
@@ -614,6 +621,9 @@ void node_controller::handle_read_gnss()
 			(void)reply("GNSS utc_unix_s=%s\r\n", utc_time);
 		}
 	}
+#else
+	(void)reply("ERR GNSS_DISABLED\r\n");
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////

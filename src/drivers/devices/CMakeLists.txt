@@ -1,8 +1,11 @@
 target_sources(${TRACK_NODE_TARGET} PRIVATE
     bmp280.cpp
-    neo6m.cpp
     w25qxx.cpp
 )
+
+if(TRACK_NODE_ENABLE_GNSS)
+    target_sources(${TRACK_NODE_TARGET} PRIVATE neo6m.cpp)
+endif()
 
 if(TRACK_NODE_ENABLE_LORA)
     target_sources(${TRACK_NODE_TARGET} PRIVATE sx126x.cpp)

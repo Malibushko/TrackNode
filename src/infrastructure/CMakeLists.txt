@@ -12,9 +12,11 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     supervisor.cpp
     service_status.cpp
     diagnostic_log.cpp
-    gnss_service.cpp
 )
 
+if(TRACK_NODE_ENABLE_GNSS)
+    target_sources(${TRACK_NODE_TARGET} PRIVATE gnss_service.cpp)
+endif()
 if(TRACK_NODE_ENABLE_LORA)
     target_sources(${TRACK_NODE_TARGET} PRIVATE radio_service.cpp)
 endif()

@@ -10,10 +10,10 @@ option(PERF_MEASURING "Log scoped execution times" OFF)
 option(TRACK_NODE_DEBUG_IN_SLEEP "Keep the STM32 debug interface active during Sleep" OFF)
 option(TRACK_NODE_ENABLE_LORA "Include SX126x transport" OFF)
 option(TRACK_NODE_ENABLE_GNSS "Include NEO-6M GNSS service" OFF)
-option(TRACK_NODE_ENABLE_BLUETOOTH "Include unfinished Bluetooth scaffold" ON)
+option(TRACK_NODE_ENABLE_BLUETOOTH "Include the nRF52840 Bluetooth bridge" ON)
 option(NO_STORAGE "Build TrackNode without SD card and filesystem" ON)
 option(TRACK_NODE_POWER_STATS "Count task wakeups and CPU sleep for GET POWER" ON)
-option(TRACK_NODE_POWER_FLOOR "Build the power floor measurement firmware" ON)
+option(TRACK_NODE_POWER_MEASURING "Build the standalone power measuring firmware" ON)
 option(TRACK_NODE_STOP_MODE "Sleep in STOP with the RTC as tick source (tickless builds)" ON)
 
 include(cmake/bluetooth.cmake)
@@ -36,8 +36,6 @@ if(CMAKE_CROSSCOMPILING)
             include/drivers/devices/neo6m.h
             include/drivers/protocols/nmea0183.h
             include/drivers/protocols/nmea0183_types.h
-            src/drivers/protocols/nmea0183.cpp
-            src/drivers/devices/neo6m.cpp
             include/infrastructure/gnss_service.h
             include/drivers/devices/sx126x.h
             include/misc/bits_helpers.h
@@ -120,8 +118,8 @@ if(CMAKE_CROSSCOMPILING)
         message(STATUS "STM32_Programmer_CLI not found; flash target unavailable")
     endif()
 
-    if(TRACK_NODE_POWER_FLOOR)
-        include(cmake/power_floor.cmake)
+    if(TRACK_NODE_POWER_MEASURING)
+        include(cmake/power_measuring.cmake)
     endif()
 else()
     enable_testing()

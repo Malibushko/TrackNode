@@ -20,4 +20,8 @@ target_sources(${TRACK_NODE_TARGET} PRIVATE
     watchdog.cpp
 )
 
+if(TRACK_NODE_ENABLE_GNSS)
+    target_sources(${TRACK_NODE_TARGET} PRIVATE protocols/nmea0183.cpp)
+endif()
+
 add_subdirectory(devices)
